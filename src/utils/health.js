@@ -3,8 +3,8 @@
  * Checks reachability of all external services and local database.
  * Used by both the HTTP /health endpoint and the Telegram /health command.
  *
- * Checks: SQLite, Notion API, Anthropic API, Google Drive, Google Sheets,
- * pending sync queue, scheduler status.
+ * Checks: SQLite, Notion API, Gemini API, Cloud Vision API, Google Drive,
+ * Google Sheets, pending sync queue, scheduler status.
  */
 
 const { Client } = require('@notionhq/client');
@@ -42,30 +42,38 @@ async function runHealthChecks() {
     results.status = 'degraded';
   }
 
-  /* Anthropic — verify API key with a minimal 1-token request */
+  /* Gemini — verify API key with a minimal request */
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': config.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'ping' }],
-      }),
-    });
-    if (response.ok) {
-      results.checks.anthropic = { status: 'ok' };
-    } else {
-      results.checks.anthropic = { status: 'error', message: `HTTP ${response.status}` };
+    const { chat } = require('./gemini');
+    await chat({ systemInstruction: 'Reply with OK.', userMessage: 'ping', maxTokens: 4 });
+    results.checks.gemini = { status: 'ok' };
+  } catch (err) {
+    results.checks.gemini = { status: 'error', message: err.message };
+    results.status = 'degraded';
+  }
+
+  /* Cloud Vision — verify API key with a minimal request */
+  if (config.GOOGLE_CLOUD_API_KEY) {
+    try {
+      const url = `https://vision.googleapis.com/v1/images:annotate?key=${config.GOOGLE_CLOUD_API_KEY}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [] }),
+      });
+      if (response.ok || response.status === 400) {
+        /* 400 is expected for empty requests — means the key is valid */
+        results.checks.cloudVision = { status: 'ok' };
+      } else {
+        results.checks.cloudVision = { status: 'error', message: `HTTP ${response.status}` };
+        results.status = 'degraded';
+      }
+    } catch (err) {
+      results.checks.cloudVision = { status: 'error', message: err.message };
       results.status = 'degraded';
     }
-  } catch (err) {
-    results.checks.anthropic = { status: 'error', message: err.message };
-    results.status = 'degraded';
+  } else {
+    results.checks.cloudVision = { status: 'skipped', message: 'API key not configured' };
   }
 
   /* Google Drive — verify OAuth token by listing files in root (1 result max).

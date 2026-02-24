@@ -38,7 +38,7 @@ const {
   getDraftContent,
 } = require('./notes/buffer');
 const { markReminderDone, snoozeReminder } = require('../shared/scheduler');
-const { chat } = require('../utils/anthropic');
+const { chat } = require('../utils/gemini');
 const { runHealthChecks, formatHealthMessage } = require('../utils/health');
 const logger = require('../utils/logger');
 
@@ -390,19 +390,18 @@ async function handleKeyboardButton(ctx, text) {
 /* ─── UNKNOWN intent handler ─── */
 
 /**
- * Handles UNKNOWN intent — conversational reply using Claude Haiku.
+ * Handles UNKNOWN intent — conversational reply using Gemini.
  * Gives a helpful response for messages that don't match any task or note intent.
  */
 async function handleUnknown(ctx, text) {
   try {
     const response = await chat({
-      system:
+      systemInstruction:
         'You are Bryan\'s personal assistant Telegram bot. You help manage tasks, notes, and reminders. ' +
         'If the user\'s message seems like they want to do something task-related but you\'re not sure, ' +
         'suggest what they might mean. Keep replies short and helpful (1-3 sentences max). ' +
         'You can suggest commands like /today, /inbox, /notes, or tell them to phrase requests naturally.',
       userMessage: text,
-      model: 'haiku',
       maxTokens: 256,
     });
     await ctx.reply(response);

@@ -44,8 +44,12 @@ module.exports = {
   NOTION_TASKS_DB_ID: required('NOTION_TASKS_DB_ID'),
   NOTION_QUICKNOTES_DB_ID: required('NOTION_QUICKNOTES_DB_ID'),
 
-  /* Anthropic — always required */
-  ANTHROPIC_API_KEY: required('ANTHROPIC_API_KEY'),
+  /* Gemini — always required (replaces Anthropic) */
+  GEMINI_API_KEY: required('GEMINI_API_KEY'),
+
+  /* Google Cloud Vision — required in production (receipt OCR).
+     Optional in dev so bot can still run for todo/notes testing. */
+  GOOGLE_CLOUD_API_KEY: requiredInProd('GOOGLE_CLOUD_API_KEY'),
 
   /* Google — required in production (file handling + receipts need them).
      Optional in development so bot can still run for todo/notes testing. */

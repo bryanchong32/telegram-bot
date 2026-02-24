@@ -24,7 +24,7 @@
 
 const { InlineKeyboard } = require('grammy');
 const { db } = require('../../shared/db');
-const { chat } = require('../../utils/anthropic');
+const { chat } = require('../../utils/gemini');
 const { todayMYT } = require('../../utils/dates');
 const { inferStream } = require('../streamRouter');
 const logger = require('../../utils/logger');
@@ -256,7 +256,7 @@ function clearAllTimers(chatId) {
 async function checkIntentShift(draftContent, newMessage) {
   try {
     const response = await chat({
-      system:
+      systemInstruction:
         `You have an open note draft: "${draftContent}"\n` +
         `New message received: "${newMessage}"\n\n` +
         'Does the new message continue the same note, or is it a completely different topic/intent?\n' +
@@ -266,7 +266,6 @@ async function checkIntentShift(draftContent, newMessage) {
         '  "reason": "brief explanation"\n' +
         '}',
       userMessage: newMessage,
-      model: 'haiku',
       maxTokens: 128,
     });
 
@@ -305,7 +304,7 @@ async function generateNoteMetadata(content) {
     const today = todayMYT();
 
     const response = await chat({
-      system:
+      systemInstruction:
         `You are analysing a note written by Bryan, a business owner managing multiple ventures. Today is ${today}.\n\n` +
         'Given the note content, generate:\n' +
         '1. title: A concise, descriptive title (max 80 chars). Never use the raw first line — summarise the essence.\n' +
@@ -320,7 +319,6 @@ async function generateNoteMetadata(content) {
         'Respond with JSON only — no wrapping, no explanation:\n' +
         '{ "title": "...", "type": "...", "stream": "..." or null }',
       userMessage: content,
-      model: 'sonnet',
       maxTokens: 256,
     });
 

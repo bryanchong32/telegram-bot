@@ -19,7 +19,7 @@ const { shouldConvert, convertToPdf } = require('./convert');
 const { createTask, searchTasks, getPageTitle } = require('../todo/notion');
 const { appendFileLink } = require('./notionFiles');
 const { inferStream } = require('../streamRouter');
-const { chat } = require('../../utils/anthropic');
+const { chat } = require('../../utils/gemini');
 const { db } = require('../../shared/db');
 const logger = require('../../utils/logger');
 
@@ -232,10 +232,10 @@ async function parseFileCaption(caption, fileName) {
     };
   }
 
-  /* Use Claude Haiku to extract hints from the caption */
+  /* Use Gemini to extract hints from the caption */
   try {
     const response = await chat({
-      system:
+      systemInstruction:
         'You extract metadata from a file caption sent to a Telegram task bot. ' +
         'The user is sending a file and may mention which task to attach it to and/or which stream it belongs to.\n\n' +
         'Streams: Minionions, KLN, Overdrive, Personal, Property\n' +
@@ -247,7 +247,6 @@ async function parseFileCaption(caption, fileName) {
         'If the caption is just a stream name or keywords, set stream only.\n' +
         'If ambiguous, set both to null.',
       userMessage: caption,
-      model: 'haiku',
       maxTokens: 128,
     });
 

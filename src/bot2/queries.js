@@ -1,13 +1,13 @@
 /**
  * Expense query handler for Bot 2.
  *
- * Parses natural language expense queries via Claude Haiku
+ * Parses natural language expense queries via Gemini 2.0 Flash
  * and returns formatted summaries from Google Sheets data.
  *
  * Supported queries: this month, last month, by category, recent, total.
  */
 
-const { chat } = require('../utils/anthropic');
+const { chat } = require('../utils/gemini');
 const { getExpensesByMonth, getExpensesByCategory, getAllExpenses } = require('./sheets');
 const { todayMYT } = require('../utils/dates');
 const logger = require('../utils/logger');
@@ -41,7 +41,7 @@ Examples:
  * @returns {Promise<string>} — formatted response message
  */
 async function handleExpenseQuery(text) {
-  /* Classify the query using Claude Haiku */
+  /* Classify the query using Gemini */
   const query = await classifyQuery(text);
   logger.info('Expense query classified', { type: query.type });
 
@@ -66,11 +66,10 @@ async function handleExpenseQuery(text) {
  */
 async function classifyQuery(text) {
   try {
-    const system = QUERY_SYSTEM_PROMPT.replace('{{TODAY}}', todayMYT());
+    const systemInstruction = QUERY_SYSTEM_PROMPT.replace('{{TODAY}}', todayMYT());
     const response = await chat({
-      system,
+      systemInstruction,
       userMessage: text,
-      model: 'haiku',
       maxTokens: 128,
     });
 

@@ -1,14 +1,12 @@
 /**
- * Intent Engine — classifies incoming text messages using Claude Haiku.
+ * Intent Engine — classifies incoming text messages using Gemini 2.0 Flash.
  *
- * Sends the user's message to Claude with a system prompt that defines
+ * Sends the user's message to Gemini with a system prompt that defines
  * all known intents. Returns a structured JSON object with the classified
  * intent and extracted fields (task name, stream, urgency, due date, etc.).
- *
- * Uses Haiku for cost efficiency (~$0.0003/call).
  */
 
-const { chat } = require('../utils/anthropic');
+const { chat } = require('../utils/gemini');
 const { todayMYT } = require('../utils/dates');
 const logger = require('../utils/logger');
 
@@ -172,14 +170,13 @@ async function classifyIntent(text) {
   const systemPrompt = buildSystemPrompt();
 
   const response = await chat({
-    system: systemPrompt,
+    systemInstruction: systemPrompt,
     userMessage: text,
-    model: 'haiku',
     maxTokens: 512,
   });
 
-  /* Parse the JSON response from Claude.
-     Strip markdown code fences if present — Haiku sometimes wraps JSON in ```json blocks
+  /* Parse the JSON response from Gemini.
+     Strip markdown code fences if present — LLMs sometimes wrap JSON in ```json blocks
      despite being told not to. */
   try {
     let cleaned = response.trim();

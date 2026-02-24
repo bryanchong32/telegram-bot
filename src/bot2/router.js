@@ -6,8 +6,8 @@
  * - /summary — this month's expense summary
  * - /categories — category breakdown
  * - /recent — last 10 receipts
- * - Photo/document → Claude Vision → Sheets + Drive → confirmation
- * - Text → expense query (Haiku classification → Sheets lookup)
+ * - Photo/document → Google Vision + Gemini → Sheets + Drive → confirmation
+ * - Text → expense query (Gemini classification → Sheets lookup)
  */
 
 const fs = require('fs');
@@ -61,7 +61,7 @@ function registerRouter(bot) {
       'Hey Bryan! I\'m your Receipt & Expense Tracker.\n\n' +
       'What I do:\n' +
       '  Send me a receipt photo or PDF\n' +
-      '  → I extract the details (Claude Vision)\n' +
+      '  → I extract the details (Google Vision + Gemini)\n' +
       '  → Log to Google Sheets\n' +
       '  → Save to Google Drive\n\n' +
       'Expense queries:\n' +
@@ -219,7 +219,7 @@ function registerRouter(bot) {
 /**
  * Full receipt processing pipeline:
  * 1. Download file from Telegram
- * 2. Send to Claude Vision for data extraction
+ * 2. Send to Google Vision + Gemini for data extraction
  * 3. Upload original to Google Drive (receipts/YYYY/MM/)
  * 4. Append expense row to Google Sheets
  * 5. Reply with confirmation
@@ -236,11 +236,11 @@ async function handleReceiptMessage(ctx) {
     /* ─── Step 2: Download the file ─── */
     tempPath = await downloadTelegramFile(ctx, fileId, fileName);
 
-    /* ─── Step 3: Extract receipt data via Claude Vision ─── */
+    /* ─── Step 3: Extract receipt data via Google Vision + Gemini ─── */
     const imageBuffer = fs.readFileSync(tempPath);
     const caption = ctx.message.caption || '';
 
-    /* Map MIME types for Vision API (PDFs supported directly) */
+    /* Map MIME types — images go to Cloud Vision OCR, PDFs go to Gemini multimodal */
     const visionMediaType = mapMediaType(mimeType);
     const receiptData = await extractReceiptData(imageBuffer, visionMediaType, caption);
 
@@ -383,7 +383,7 @@ async function downloadTelegramFile(ctx, fileId, fileName) {
 }
 
 /**
- * Maps MIME types to Claude Vision's supported media_type values.
+ * Maps MIME types to supported media_type values.
  * Falls back to image/jpeg for unknown types.
  */
 function mapMediaType(mimeType) {

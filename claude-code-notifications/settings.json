@@ -21,6 +21,17 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/telegram_notify.py"
+          }
+        ]
+      }
     ]
   }
 }

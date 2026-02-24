@@ -172,7 +172,8 @@ function extractFileInfo(ctx) {
 
 /**
  * Downloads a file from Telegram servers to a temporary local path.
- * Uses grammY's getFile() + download() which handles the Telegram Bot API.
+ * grammY's getFile() returns file_path — we construct the download URL
+ * and fetch the file bytes directly from Telegram's file server.
  *
  * @param {Object} ctx — grammY context
  * @param {string} fileId — Telegram file ID
@@ -183,17 +184,32 @@ async function downloadTelegramFile(ctx, fileId, fileName) {
   /* Get file info from Telegram (includes file_path for download) */
   const file = await ctx.api.getFile(fileId);
 
+  if (!file.file_path) {
+    throw new Error('Telegram returned no file_path — file may be too large (>20MB)');
+  }
+
+  /* Construct the download URL from the bot token + file_path */
+  const botToken = ctx.api.token;
+  const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${file.file_path}`;
+
   /* Create a temp directory for this download */
   const tempDir = path.join(os.tmpdir(), 'telegram-bot-files');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
 
-  /* Download the file using grammY's built-in download helper */
+  /* Fetch the file from Telegram and write to disk */
   const tempPath = path.join(tempDir, `${Date.now()}_${fileName}`);
-  await file.download(tempPath);
+  const response = await fetch(downloadUrl);
 
-  logger.info('File downloaded from Telegram', { tempPath, size: fs.statSync(tempPath).size });
+  if (!response.ok) {
+    throw new Error(`Telegram file download failed: ${response.status} ${response.statusText}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(tempPath, buffer);
+
+  logger.info('File downloaded from Telegram', { tempPath, size: buffer.length });
   return tempPath;
 }
 

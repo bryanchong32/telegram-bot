@@ -39,6 +39,7 @@ const {
 } = require('./notes/buffer');
 const { markReminderDone, snoozeReminder } = require('../shared/scheduler');
 const { chat } = require('../utils/anthropic');
+const { runHealthChecks, formatHealthMessage } = require('../utils/health');
 const logger = require('../utils/logger');
 
 /* Store bot reference for timer callbacks (set during registerRouter) */
@@ -155,8 +156,13 @@ function registerRouter(bot) {
     await ctx.reply(HELP_TEXT, { reply_markup: buildMainKeyboard() });
   });
 
-  /* /health — system health check (handler registered in index.js via healthCommand) */
-  /* Registered separately so health module can access db + Notion status */
+  /* /health — system health check */
+  bot.command('health', async (ctx) => {
+    logger.info('Bot 1 /health command', { chatId: ctx.chat.id });
+    await ctx.reply('Running health checks...');
+    const results = await runHealthChecks();
+    await ctx.reply(formatHealthMessage(results));
+  });
 
   /**
    * Text message handler — keyboard buttons → draft buffer → intent engine.

@@ -19,7 +19,33 @@ const { appendExpenseRow, deleteExpenseRow } = require('./sheets');
 const { InlineKeyboard } = require('grammy');
 const { drive, withGoogleRetry } = require('../utils/google');
 const { handleExpenseQuery } = require('./queries');
+const { runHealthChecks, formatHealthMessage } = require('../utils/health');
 const logger = require('../utils/logger');
+
+/* ─── Message dedup ─── */
+
+/* Tracks recently processed message IDs to prevent duplicate processing.
+   Telegram retries webhook delivery when our response is slow (>10s for receipts).
+   Using a Set with TTL cleanup — entries expire after 5 minutes. */
+const processedMessages = new Map(); /* messageId → timestamp */
+const DEDUP_TTL_MS = 5 * 60 * 1000; /* 5 minutes */
+
+/**
+ * Returns true if this message was already processed (duplicate).
+ * Cleans up expired entries on each call.
+ */
+function isDuplicate(messageId) {
+  const now = Date.now();
+
+  /* Clean expired entries */
+  for (const [id, ts] of processedMessages) {
+    if (now - ts > DEDUP_TTL_MS) processedMessages.delete(id);
+  }
+
+  if (processedMessages.has(messageId)) return true;
+  processedMessages.set(messageId, now);
+  return false;
+}
 
 /**
  * Registers all command and message handlers on the bot instance.
@@ -96,6 +122,14 @@ function registerRouter(bot) {
     }
   });
 
+  /* /health — system health check */
+  bot.command('health', async (ctx) => {
+    logger.info('Bot 2 /health command', { chatId: ctx.chat.id });
+    await ctx.reply('Running health checks...');
+    const results = await runHealthChecks();
+    await ctx.reply(formatHealthMessage(results));
+  });
+
   /* /recent — quick shortcut for recent receipts */
   bot.command('recent', async (ctx) => {
     logger.info('Bot 2 /recent', { chatId: ctx.chat.id });
@@ -111,6 +145,12 @@ function registerRouter(bot) {
   /* ─── Receipt Processing (Photo/Document) ─── */
 
   bot.on(['message:photo', 'message:document'], async (ctx) => {
+    /* Dedup — Telegram retries webhook delivery if receipt processing is slow.
+       Skip if we've already started processing this exact message. */
+    if (isDuplicate(ctx.message.message_id)) {
+      logger.warn('Duplicate receipt message skipped', { messageId: ctx.message.message_id });
+      return;
+    }
     await handleReceiptMessage(ctx);
   });
 
@@ -231,10 +271,10 @@ async function handleReceiptMessage(ctx) {
       mimeType
     );
 
-    /* ─── Step 5: Log to Google Sheets ─── */
+    /* ─── Step 5: Log to Google Sheets (with duplicate check) ─── */
     const notes = buildNotes(receiptData);
     const loggedBy = getUserDisplayName(ctx);
-    const { rowIndex } = await appendExpenseRow({
+    const { rowIndex, duplicate } = await appendExpenseRow({
       date: receiptData.date,
       merchant: receiptData.merchant,
       amount: receiptData.amount,
@@ -244,6 +284,19 @@ async function handleReceiptMessage(ctx) {
       notes,
       loggedBy,
     });
+
+    /* Duplicate detected — delete the Drive upload and tell user */
+    if (duplicate) {
+      await withGoogleRetry(() =>
+        drive.files.delete({ fileId: driveFileId, supportsAllDrives: true })
+      ).catch(() => {}); /* best-effort cleanup */
+
+      await ctx.reply(
+        `Duplicate found: ${receiptData.currency} ${receiptData.amount.toFixed(2)} on ${receiptData.date} is already logged.\n` +
+        'If this is a different receipt with the same amount, send it again with a caption like "different receipt".'
+      );
+      return;
+    }
 
     /* ─── Step 6: Reply with confirmation + Delete button ─── */
     const confirmMsg = formatConfirmation(receiptData, webViewLink);

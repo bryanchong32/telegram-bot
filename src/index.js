@@ -13,7 +13,7 @@ const { bot1 } = require('./bot1/bot');
 const { bot2 } = require('./bot2/bot');
 const { startScheduler, stopScheduler, checkMissedTriggers } = require('./shared/scheduler');
 const { startPendingSyncWorker, stopPendingSyncWorker } = require('./shared/pendingSync');
-const { runHealthChecks, formatHealthMessage } = require('./utils/health');
+const { runHealthChecks } = require('./utils/health');
 const { restoreOpenDrafts, clearAllState } = require('./bot1/notes/buffer');
 const logger = require('./utils/logger');
 
@@ -44,21 +44,11 @@ async function main() {
   /* 1. Initialise SQLite tables */
   initTables();
 
-  /* 2. Register /health command on both bots (needs db to be ready) */
-  bot1.command('health', async (ctx) => {
-    await ctx.reply('Running health checks...');
-    const results = await runHealthChecks();
-    await ctx.reply(formatHealthMessage(results));
-  });
-
-  bot2.command('health', async (ctx) => {
-    await ctx.reply('Running health checks...');
-    const results = await runHealthChecks();
-    await ctx.reply(formatHealthMessage(results));
-  });
-
-  /* 3. Create Express app for HTTP health endpoint (always available) */
+  /* 2. Create Express app for HTTP health endpoint (always available) */
   const app = express();
+
+  /* Parse JSON request bodies — required for Telegram webhook payloads */
+  app.use(express.json());
 
   /* HTTP health endpoint — for external monitoring / Nginx checks */
   app.get('/health', async (req, res) => {
@@ -80,9 +70,11 @@ async function main() {
   /* 5. Start bots — webhook mode (production) or long polling (development) */
   if (config.NODE_ENV === 'production') {
     /* Production: Register webhook routes on Express, then start the server.
-       Webhook URLs are set via the deployment script after Nginx is configured. */
+       Webhook URLs are set via the deployment script after Nginx is configured.
+       Bot 2 timeout raised to 60s — receipt processing (Vision + Drive + Sheets)
+       takes 15-30s. Default 10s causes Telegram to retry, creating duplicates. */
     app.post('/webhook/bot1', webhookCallback(bot1, 'express'));
-    app.post('/webhook/bot2', webhookCallback(bot2, 'express'));
+    app.post('/webhook/bot2', webhookCallback(bot2, 'express', 'return', 60000));
     logger.info('Production mode — webhook routes registered');
   } else {
     /* Development: Use long polling (no webhook needed, works without a public URL).

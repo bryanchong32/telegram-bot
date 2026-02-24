@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Telegram Bots
 
-**Last Updated:** 2026-02-24 14:00 MYT
+**Last Updated:** 2026-02-24 15:00 MYT
 
 ---
 
@@ -156,6 +156,7 @@ Message type?
 | @notionhq/client | Notion API client | Official SDK with typed methods, rate limit handling. |
 | better-sqlite3 | SQLite for Node.js | Synchronous API is simpler for draft buffer (no async race conditions). Faster than node-sqlite3. |
 | node-cron | Cron-style scheduler | Triggers the scheduler worker check every 60 seconds. Lightweight. |
+| cron-parser | Cron expression → next occurrence | Calculates next_run_at from cron_expr for rescheduling recurring jobs. node-cron doesn't expose this. Added Phase 4. |
 | googleapis | Google Drive + Sheets APIs | Official SDK. Single package covers Drive + Sheets + Calendar (Phase 2). Needed from Phase 5 onwards. |
 | @anthropic-ai/sdk | Anthropic API client | Intent classification, title generation, vision (receipts). Already used across projects. |
 

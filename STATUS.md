@@ -1,6 +1,37 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 3 — Quick Notes Module (COMPLETE)
+## Current Phase: Phase 4 — Scheduler & Briefings (COMPLETE)
+
+---
+
+### Session 4 — 2026-02-24 15:00 MYT (Phase 4: Scheduler & Briefings)
+
+**Completed:**
+- [x] Scheduler worker fully implemented (src/shared/scheduler.js): executes 4 job types — briefing, review, reminder, recurring. Processes due jobs every 60s from scheduled_jobs table.
+- [x] Daily briefing composer (src/bot1/briefing/daily.js): queries today's tasks (grouped by urgency), inbox count, and today's reminders. Formats morning briefing message. Calendar placeholder for Phase 2.
+- [x] Weekly review composer (src/bot1/briefing/weekly.js): queries waiting items (with age in days), tasks completed this week (via last_edited_time proxy), and upcoming 7-day tasks. Formats Sunday review message.
+- [x] Reminder delivery: fires one-shot reminders with inline Done/Snooze buttons (reminder:done:{id}, reminder:snooze:{id}). Done deactivates job, Snooze reschedules +1hr.
+- [x] Recurring task creation: creates Notion Master Task with pre-filled fields on cron trigger, notifies Bryan via Telegram.
+- [x] Cron-based rescheduling: recurring jobs auto-calculate next_run_at via cron-parser. One-shot reminders deactivated after firing.
+- [x] Missed-trigger detection (checkMissedTriggers): on startup, finds active jobs whose next_run_at fell in the last 24hrs and re-executes them. Handles VPS restarts.
+- [x] Router updated (src/bot1/router.js): reminder:done and reminder:snooze callback handlers. Replaces Phase 4 placeholder.
+- [x] Entry point updated (src/index.js): passes bot1 reference to scheduler, added checkMissedTriggers on startup.
+- [x] Date helpers updated (src/utils/dates.js): nextCronRun() (cron expression → next ISO datetime), startOfDayMYT() helper.
+- [x] New dependency: cron-parser — calculates next occurrence from cron expressions with MYT timezone.
+- [x] Seed script (scripts/seed-scheduler.js): idempotent seeder for default jobs. Creates daily briefing (0 8 * * *) and weekly review (0 20 * * 0).
+- [x] SQLite seeded: daily briefing (next: 2026-02-25 08:00 MYT), weekly review (next: 2026-03-01 Sun 20:00 MYT).
+- [x] Startup verified: clean boot, all modules load, scheduler starts, missed-trigger check passes, no regressions.
+
+**Next Up (Phase 5 — File Handling):**
+- [ ] Google OAuth setup (Drive + Sheets credentials)
+- [ ] Google Drive upload module (src/bot1/files/drive.js)
+- [ ] Office → PDF conversion via LibreOffice (src/bot1/files/convert.js)
+- [ ] ATTACH_FILE intent handler (src/bot1/files/handlers.js)
+- [ ] File linking to Notion Master Tasks (File Links property)
+
+**Not needed yet:**
+- OpenAI API key for Whisper (deferred voice notes)
+- VPS deployment — still testing locally
 
 ---
 
@@ -134,8 +165,8 @@
 | 0. Planning | ✅ Complete | Specs, audit, decisions, docs |
 | 1. Foundation | ✅ Complete | Project setup, webhook, SQLite, Notion DBs, auth |
 | 2. Todo Module | ✅ Complete | ADD/COMPLETE/LIST/UPDATE_TODO, stream routing, Notion |
-| 3. Quick Notes Module | ⬜ Not started | Buffer, save/discard, intent shift, reminders, promote (no voice) |
-| 4. Scheduler & Briefings | ⬜ Not started | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
+| 3. Quick Notes Module | ✅ Complete | Buffer, save/discard, intent shift, reminders, promote (no voice) |
+| 4. Scheduler & Briefings | ✅ Complete | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
 | 5. File Handling | ⬜ Not started | Drive upload, PDF conversion, ATTACH_FILE, task linking |
 | 6. Bot 2 — Receipts | ⬜ Not started | Vision extraction, Sheets logging, Drive storage, queries |
 | 7. Polish & Hardening | ⬜ Not started | Edge cases, crash recovery, health check, security audit |

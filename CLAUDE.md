@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 14:00 MYT | Updated By: Claude Code (Session 3)
+# Last Updated: 2026-02-24 15:00 MYT | Updated By: Claude Code (Session 4)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 3 Complete — ready for Phase 4 (Scheduler & Briefings)
-**Last Updated:** 2026-02-24 14:00 MYT
+**Phase:** Phase 4 Complete — ready for Phase 5 (File Handling)
+**Last Updated:** 2026-02-24 15:00 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -266,18 +266,20 @@ Then summarise to Bryan:
 - 2026-02-24 12:15 — Phase 1 Foundation complete: scaffolding, all deps (latest), SQLite (3 tables), both bots running (grammY + Express), health check, Notion DBs created, PM2/Nginx configs, Git initialized on `dev` branch
 - 2026-02-24 13:00 — Phase 2 Todo Module complete: intent engine (Haiku), stream router, all 4 todo handlers (ADD/COMPLETE/LIST/UPDATE), Notion CRUD, queryDatabase helper, dev startup robustness (409 retry). All intents tested from Telegram.
 - 2026-02-24 14:00 — Phase 3 Quick Notes Module complete: draft buffer (SQLite, 5s timer, 1hr timeout, intent shift detection), notes handlers (ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK), Notion Quick Notes CRUD, draft Save/Discard callbacks. UX: persistent reply keyboard (6 buttons), /help command, setMyCommands, /ideas + /reminders shortcuts. Tested from Telegram.
+- 2026-02-24 15:00 — Phase 4 Scheduler & Briefings complete: scheduler executes 4 job types (briefing/review/reminder/recurring), daily briefing composer (08:00 MYT), weekly review composer (Sun 20:00 MYT), reminder Done/Snooze buttons, recurring task → Notion, cron-parser for rescheduling, missed-trigger detection on startup, seed script. SQLite seeded with default jobs.
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 4: Scheduler & Briefings — unified scheduler worker, recurring tasks, daily briefing (08:00), weekly review (Sun 20:00), reminder delivery with Done/Snooze buttons
+- Phase 5: File Handling — Google OAuth setup, Drive upload, Office→PDF conversion, ATTACH_FILE intent, file linking to Notion tasks
 
 **Pending Bryan's Action:**
 - Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
+- Google Cloud project setup needed for Phase 5 (Drive + Sheets APIs + OAuth credentials)
 
 **Known Issues / Blockers:**
-- Google OAuth credentials needed for Drive + Sheets (deferred to Phase 5/6)
+- Google OAuth credentials needed for Drive + Sheets (required for Phase 5)
 - Voice notes (Whisper) deferred — no OpenAI API key needed yet
 - VPS deployment deferred until ready for production testing (Nginx domain + SSL setup needed)
 
@@ -289,6 +291,7 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-24 15:00 | cron-parser npm package for next_run_at | Hand-code cron parser | node-cron doesn't expose "next occurrence" calculator. cron-parser handles DST, month boundaries, leap years. Tiny package, low effort to reverse. | Low |
 | 2026-02-24 14:00 | Intent shift only after 5s preview shown | Check on every message | Within 5s rapid-fire → just append (zero cost). After preview shown → Haiku shift check. Safe fallback: assume continues_draft on failure. | Low |
 | 2026-02-24 14:00 | Persistent reply keyboard for UX | Text-only interface | 6-button keyboard + setMyCommands + /help. Bryan found features hard to discover. Zero API cost for button taps. | Low |
 | 2026-02-24 13:00 | Raw REST for Notion database queries | Use @notionhq/client dataSources.query() | @notionhq/client v5.x removed databases.query(). Built queryDatabase() helper calling POST /databases/{id}/query via fetch. | Low |

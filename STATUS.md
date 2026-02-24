@@ -1,6 +1,35 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 7 — Polish & Hardening (COMPLETE)
+## Current Phase: DEPLOYED TO PRODUCTION
+
+---
+
+### Session 9 — 2026-02-24 18:45 MYT (VPS Deployment + Bug Fixes)
+
+**Completed:**
+- [x] VPS deployment: code uploaded to `/home/deploy/telegram-bots/`, .env configured, npm dependencies installed, data/ directory created
+- [x] Nginx: dedicated server block at `bryan-bots.duckdns.org` (separate from ECOMWAVE CRM)
+- [x] SSL: Let's Encrypt certificate for bryan-bots.duckdns.org (auto-renews, expires 2026-05-25)
+- [x] Security: HTTPS-only, HTTP→HTTPS redirect, only 3 paths exposed (/webhook/bot1, /webhook/bot2, /health), all other paths return 444 (connection dropped)
+- [x] PM2 started as `deploy` user (process: telegram-bots, port 3003)
+- [x] Telegram webhooks set to `https://bryan-bots.duckdns.org/webhook/bot1` and `/bot2`
+- [x] Scheduler seeded: daily briefing (08:00 MYT) + weekly review (Sun 20:00 MYT)
+- [x] Bug fix: added `express.json()` middleware — webhook body wasn't being parsed (grammY got undefined update_id)
+- [x] Bug fix: moved `/health` command into both routers — was registered in index.js after the catch-all text handler, so `/health` was never reached
+- [x] Bug fix: receipt duplicate entries (1 photo → 3 entries) — root cause was grammY 10s webhook timeout, Telegram retried. Fixed with:
+  - Bot 2 webhook timeout raised to 60s
+  - Message-level dedup tracking (in-memory Map, 5min TTL)
+  - Sheets duplicate check (same date + amount rejects entry, cleans up Drive upload)
+- [x] Ecomwave Nginx config cleaned: bot webhook routes removed (now on own domain)
+- [x] Committed to GitHub and merged to main
+
+**Pending Bryan's Action:**
+- Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
+- Install LibreOffice on VPS: `apt-get install libreoffice` (for Office→PDF conversion)
+
+**Known Issues:**
+- punycode deprecation warning from Node.js 22+ — harmless, upstream dependency issue
+- Voice notes (Whisper) deferred to Phase 2 — no OpenAI API key needed yet
 
 ---
 

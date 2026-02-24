@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-25 01:00 MYT | Updated By: Claude Code (Session 8)
+# Last Updated: 2026-02-24 18:45 MYT | Updated By: Claude Code (Session 9)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** ALL 7 PHASES COMPLETE — Ready for VPS deployment
-**Last Updated:** 2026-02-25 01:00 MYT
+**Phase:** DEPLOYED TO PRODUCTION
+**Last Updated:** 2026-02-24 18:45 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -263,24 +263,25 @@ Then summarise to Bryan:
 - 2026-02-24 — GitHub repo created: https://github.com/bryanchong32/telegram-bot.git
 - 2026-02-24 — Telegram bots created via @BotFather (tokens ready, not yet in .env)
 - 2026-02-24 — Notion integration created (internal, workspace: Bryan's Notion)
-- 2026-02-24 12:15 — Phase 1 Foundation complete: scaffolding, all deps (latest), SQLite (3 tables), both bots running (grammY + Express), health check, Notion DBs created, PM2/Nginx configs, Git initialized on `dev` branch
-- 2026-02-24 13:00 — Phase 2 Todo Module complete: intent engine (Haiku), stream router, all 4 todo handlers (ADD/COMPLETE/LIST/UPDATE), Notion CRUD, queryDatabase helper, dev startup robustness (409 retry). All intents tested from Telegram.
-- 2026-02-24 14:00 — Phase 3 Quick Notes Module complete: draft buffer (SQLite, 5s timer, 1hr timeout, intent shift detection), notes handlers (ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK), Notion Quick Notes CRUD, draft Save/Discard callbacks. UX: persistent reply keyboard (6 buttons), /help command, setMyCommands, /ideas + /reminders shortcuts. Tested from Telegram.
-- 2026-02-24 15:00 — Phase 4 Scheduler & Briefings complete: scheduler executes 4 job types (briefing/review/reminder/recurring), daily briefing composer (08:00 MYT), weekly review composer (Sun 20:00 MYT), reminder Done/Snooze buttons, recurring task → Notion, cron-parser for rescheduling, missed-trigger detection on startup, seed script. SQLite seeded with default jobs.
-- 2026-02-24 16:00 — GCP setup complete: Google Cloud project created, Drive + Sheets APIs enabled, OAuth 2.0 credentials obtained via OAuth Playground, connection verified (bryanchong32@gmail.com). googleapis package installed.
-- 2026-02-24 22:50 — Phase 5 File Handling complete: Google Drive folders created (TaskRefs + 5 stream subfolders + receipts), Sheets expense log created, Google auth helper (utils/google.js), Drive upload module (date-prefix, sharing, retry), Office→PDF conversion (LibreOffice headless, graceful fallback), ATTACH_FILE handler (download→convert→upload→link, Haiku caption parsing), Notion File Links appender (GET→append→PATCH), router + intent engine updated. Startup verified clean.
-- 2026-02-25 00:20 — Phase 6 Bot 2 Receipt Tracker complete: Claude Vision extraction (Haiku, is_receipt + confidence validation), Drive upload (YYYY/MM subfolders), Sheets logging (9 columns incl. Logged By), expense queries (Haiku NLP → Sheets), inline Delete button, non-receipt rejection, low-confidence re-upload prompt. Drive folders reorganized to Bryan's specified locations. Live tested from Telegram.
-- 2026-02-25 01:00 — Phase 7 Polish & Hardening complete: pending sync retry worker (create_task + create_note), scheduler reschedule-on-failure fix, process error handlers (unhandledRejection + uncaughtException), shutdown timeout, callback error handling, health check expanded (Drive + Sheets + scheduler), config hardened (Google creds required in prod), PM2 config fixed, Nginx finalized, deployment guide (DEPLOY.md). All 27 modules verified, startup clean.
+- 2026-02-24 12:15 — Phase 1 Foundation complete
+- 2026-02-24 13:00 — Phase 2 Todo Module complete
+- 2026-02-24 14:00 — Phase 3 Quick Notes Module complete
+- 2026-02-24 15:00 — Phase 4 Scheduler & Briefings complete
+- 2026-02-24 16:00 — GCP setup complete
+- 2026-02-24 22:50 — Phase 5 File Handling complete
+- 2026-02-25 00:20 — Phase 6 Bot 2 Receipt Tracker complete
+- 2026-02-25 01:00 — Phase 7 Polish & Hardening complete
+- 2026-02-24 18:45 — VPS deployment: dedicated domain (bryan-bots.duckdns.org), SSL, Nginx, PM2, webhooks
+- 2026-02-24 18:45 — Bug fixes: express.json(), /health command registration, receipt dedup (3 layers)
+- 2026-02-24 18:45 — Merged to main
 
 **In Progress:**
 - None
 
 **Next Up:**
-- VPS deployment following DEPLOY.md
 - Phase 2 (future): Voice notes (Whisper), Calendar module
 
 **Pending Bryan's Action:**
-- Deploy to VPS following DEPLOY.md
 - Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
 - Install LibreOffice on VPS: `apt-get install libreoffice`
 

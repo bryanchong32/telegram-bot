@@ -11,7 +11,7 @@ const config = require('./shared/config');
 const { initTables } = require('./shared/db');
 const { bot1 } = require('./bot1/bot');
 const { bot2 } = require('./bot2/bot');
-const { startScheduler, stopScheduler } = require('./shared/scheduler');
+const { startScheduler, stopScheduler, checkMissedTriggers } = require('./shared/scheduler');
 const { startPendingSyncWorker, stopPendingSyncWorker } = require('./shared/pendingSync');
 const { runHealthChecks, formatHealthMessage } = require('./utils/health');
 const { restoreOpenDrafts, clearAllState } = require('./bot1/notes/buffer');
@@ -72,8 +72,8 @@ async function main() {
     res.json({ service: 'telegram-bots', status: 'running' });
   });
 
-  /* 4. Start background workers */
-  startScheduler();
+  /* 4. Start background workers — pass bot1 so scheduler can send Telegram messages */
+  startScheduler(bot1);
   startPendingSyncWorker();
 
   /* 5. Start bots — webhook mode (production) or long polling (development) */
@@ -103,6 +103,11 @@ async function main() {
   /* 5b. Restore open drafts from SQLite (VPS restart safety) */
   restoreOpenDrafts(bot1).catch((err) => {
     logger.error('Draft restoration failed', { error: err.message });
+  });
+
+  /* 5c. Check for missed scheduler triggers from the last 24hrs (VPS restart safety) */
+  checkMissedTriggers(bot1).catch((err) => {
+    logger.error('Missed trigger check failed', { error: err.message });
   });
 
   /* 6. Start Express server (always, for health endpoint + webhooks in production) */

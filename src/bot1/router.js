@@ -5,11 +5,7 @@
  *
  * Phase 2: Routes text messages through the intent engine to todo handlers.
  * Phase 3: Adds draft buffer check before intent engine for notes.
- *   - If a draft is open and in PREVIEWING state, run intent shift detection.
- *   - If the draft is still in BUFFERING (within 5s), just append.
- *   - Routes ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK to notes handlers.
- *   - Handles draft:save and draft:discard callback queries.
- *   - Persistent reply keyboard for quick navigation (zero API cost).
+ * Phase 4: Adds reminder:done and reminder:snooze callback handlers.
  */
 
 const { Keyboard } = require('grammy');
@@ -39,6 +35,7 @@ const {
   isPreviewShown,
   getDraftContent,
 } = require('./notes/buffer');
+const { markReminderDone, snoozeReminder } = require('../shared/scheduler');
 const { chat } = require('../utils/anthropic');
 const logger = require('../utils/logger');
 
@@ -287,8 +284,25 @@ function registerRouter(bot) {
       return;
     }
 
-    /* Phase 4: reminder:done, reminder:snooze */
-    await ctx.answerCallbackQuery({ text: 'Not yet implemented' });
+    /* Reminder callbacks — Done marks complete, Snooze reschedules +1hr */
+    if (data.startsWith('reminder:done:')) {
+      const jobId = parseInt(data.split(':')[2], 10);
+      markReminderDone(jobId);
+      await ctx.answerCallbackQuery({ text: 'Reminder dismissed' });
+      await ctx.editMessageText(`✅ ${ctx.callbackQuery.message.text} — done`);
+      return;
+    }
+
+    if (data.startsWith('reminder:snooze:')) {
+      const jobId = parseInt(data.split(':')[2], 10);
+      snoozeReminder(jobId);
+      await ctx.answerCallbackQuery({ text: 'Snoozed for 1 hour' });
+      await ctx.editMessageText(`⏩ ${ctx.callbackQuery.message.text} — snoozed 1hr`);
+      return;
+    }
+
+    /* Unknown callback — shouldn't happen but handle gracefully */
+    await ctx.answerCallbackQuery({ text: 'Unknown action' });
   });
 
   /**

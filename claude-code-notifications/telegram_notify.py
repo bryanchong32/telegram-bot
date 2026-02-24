@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Claude Code hook: sends Telegram notifications on Stop and Notification events."""
+"""Claude Code hook: sends Telegram notifications on Stop, Notification, and question events."""
 
 import json
 import os
+import subprocess
 import sys
-import time
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -12,9 +12,11 @@ from datetime import datetime, timezone
 BOT_TOKEN = "8607806363:AAF6bmWqSIkp4iX3hW8hvIkq4G2alSyAyo8"
 CHAT_ID = "873921891"
 
+# Only read the last N bytes of transcript to keep hook execution fast
+TAIL_BYTES = 50000
+
 
 def format_duration(seconds):
-    """Format seconds into a human-readable duration string."""
     seconds = int(seconds)
     if seconds < 60:
         return f"{seconds}s"
@@ -25,127 +27,97 @@ def format_duration(seconds):
     return f"{hours}h {minutes}m"
 
 
+def read_transcript_tail(transcript_path):
+    if not transcript_path:
+        return []
+    try:
+        file_size = os.path.getsize(transcript_path)
+        with open(transcript_path, "r", encoding="utf-8") as f:
+            if file_size > TAIL_BYTES:
+                f.seek(file_size - TAIL_BYTES)
+                f.readline()
+            return f.readlines()
+    except OSError:
+        return []
+
+
 def get_project_name(cwd):
-    """Extract the last folder name from the working directory path."""
     if not cwd:
         return None
-    # Normalize both Windows and Unix paths
     return os.path.basename(os.path.normpath(cwd))
 
 
-def get_project_from_transcript(transcript_path, fallback_cwd):
-    """Determine the actual project by looking at recent file operations in the transcript.
-
-    In multi-root VSCode workspaces, `cwd` is always the primary folder,
-    even when work was done in a different project. This reads the transcript
-    backwards to find the most recent file path from tool uses, then extracts
-    the project folder from it.
-    """
-    if not transcript_path:
-        return get_project_name(fallback_cwd)
-
-    try:
-        with open(transcript_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        # Read backwards, find file paths from recent tool uses
-        for line in reversed(lines):
-            line = line.strip()
-            if not line:
+def get_project_from_transcript(lines, fallback_cwd):
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("type") != "assistant":
+            continue
+        content = entry.get("message", {}).get("content", [])
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "tool_use":
                 continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
+            input_data = item.get("input", {})
+            file_path = input_data.get("file_path") or input_data.get("path") or ""
+            if not file_path:
                 continue
-
-            if entry.get("type") != "assistant":
-                continue
-
-            content = entry.get("message", {}).get("content", [])
-            if not isinstance(content, list):
-                continue
-
-            for item in content:
-                if not isinstance(item, dict) or item.get("type") != "tool_use":
-                    continue
-
-                input_data = item.get("input", {})
-                # Extract file_path from common tools (Read, Edit, Write, Glob, Grep)
-                file_path = input_data.get("file_path") or input_data.get("path") or ""
-                if not file_path:
-                    continue
-
-                # Normalize and extract project folder
-                # Projects are under Desktop: C:\Users\user\Desktop\{project}\...
-                normalized = os.path.normpath(file_path)
-                parts = normalized.replace("/", os.sep).split(os.sep)
-                for i, part in enumerate(parts):
-                    if part.lower() == "desktop" and i + 1 < len(parts):
-                        return parts[i + 1]
-
-    except (OSError, KeyError, ValueError):
-        pass
-
+            normalized = os.path.normpath(file_path)
+            parts = normalized.replace("/", os.sep).split(os.sep)
+            for i, part in enumerate(parts):
+                if part.lower() == "desktop" and i + 1 < len(parts):
+                    return parts[i + 1]
     return get_project_name(fallback_cwd)
 
 
-def get_task_duration(transcript_path):
-    """Calculate task duration from the last user prompt in the transcript."""
-    if not transcript_path:
-        return None
-    try:
-        # Read the transcript JSONL backwards to find the last real user message
-        with open(transcript_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        last_user_prompt_time = None
-        for line in reversed(lines):
-            line = line.strip()
-            if not line:
-                continue
+def get_task_duration(lines):
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("type") != "user":
+            continue
+        content = entry.get("message", {}).get("content", [])
+        if isinstance(content, list) and any(
+            isinstance(c, dict) and c.get("type") == "text" for c in content
+        ):
+            ts_str = entry.get("timestamp")
+            if not ts_str:
+                return None
             try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+                ts = ts_str.replace("Z", "+00:00")
+                start = datetime.fromisoformat(ts)
+                elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+                return format_duration(elapsed) if elapsed >= 0 else None
+            except ValueError:
+                return None
+    return None
 
-            # Look for user messages with actual text content (not tool results)
-            if entry.get("type") != "user":
-                continue
-            content = entry.get("message", {}).get("content", [])
-            if isinstance(content, list) and any(
-                isinstance(c, dict) and c.get("type") == "text" for c in content
-            ):
-                last_user_prompt_time = entry.get("timestamp")
-                break
-
-        if not last_user_prompt_time:
-            return None
-
-        # Parse the ISO 8601 timestamp
-        # Handle both "2026-02-24T05:08:36.080Z" and without milliseconds
-        ts = last_user_prompt_time.replace("Z", "+00:00")
-        start = datetime.fromisoformat(ts)
-        now = datetime.now(timezone.utc)
-        elapsed = (now - start).total_seconds()
-        if elapsed < 0:
-            return None
-        return format_duration(elapsed)
-    except (OSError, KeyError, ValueError):
-        return None
 
 
 def main():
+    # Hook mode: read stdin, build message, spawn background sender
     try:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, EOFError):
         sys.exit(1)
 
     event = data.get("hook_event_name", "")
+    is_question = event == "PreToolUse" and data.get("tool_name") == "AskUserQuestion"
 
     if event == "Stop":
         prefix = "\u2705"
         message = data.get("last_assistant_message", "")
-        # Extract first sentence only, capped at 80 chars
         for sep in [".\n", ". ", "\n"]:
             idx = message.find(sep)
             if idx != -1:
@@ -156,37 +128,55 @@ def main():
     elif event == "Notification":
         prefix = "\u23f3"
         message = data.get("message", "")
+    elif is_question:
+        prefix = "\u2753"
+        tool_input = data.get("tool_input", {})
+        questions = tool_input.get("questions", [])
+        if questions:
+            message = questions[0].get("question", "Claude is asking a question")
+        else:
+            message = "Claude is asking a question"
+        if len(message) > 80:
+            message = message[:77] + "..."
     else:
         prefix = "\u2139\ufe0f"
         message = data.get("message", "") or data.get("last_assistant_message", "")
 
-    # Build the message lines
-    lines = []
+    transcript_lines = read_transcript_tail(data.get("transcript_path", ""))
 
-    project = get_project_from_transcript(
-        data.get("transcript_path", ""), data.get("cwd", "")
-    )
+    msg_lines = []
+
+    project = get_project_from_transcript(transcript_lines, data.get("cwd", ""))
     if project:
-        lines.append(f"\ud83d\udcc2 {project}")
+        msg_lines.append(f"\ud83d\udcc2 {project}")
 
-    lines.append(f"{prefix} {message}" if message else f"{prefix} Claude Code event: {event}")
+    msg_lines.append(f"{prefix} {message}" if message else f"{prefix} Claude Code event: {event}")
 
-    duration = get_task_duration(data.get("transcript_path", ""))
-    if duration:
-        lines.append(f"\u23f1\ufe0f {duration}")
+    if not is_question:
+        duration = get_task_duration(transcript_lines)
+        if duration:
+            msg_lines.append(f"\u23f1\ufe0f {duration}")
 
-    text = "\n".join(lines)
+    text = "\n".join(msg_lines)
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = json.dumps({"chat_id": CHAT_ID, "text": text}).encode()
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            resp.read()
-    except urllib.error.URLError as e:
-        print(f"Telegram send failed: {e}", file=sys.stderr)
-        sys.exit(1)
+    # Spawn a detached background process to send the Telegram message
+    # This lets the hook exit immediately so Claude Code isn't blocked
+    # Uses inline python -c to avoid path resolution issues with __file__
+    CREATE_NO_WINDOW = 0x08000000
+    send_code = (
+        "import urllib.request,json;"
+        f"urllib.request.urlopen(urllib.request.Request("
+        f"'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',"
+        f"data=json.dumps({{'chat_id':'{CHAT_ID}','text':{json.dumps(text)}}}).encode(),"
+        f"headers={{'Content-Type':'application/json'}}),timeout=10)"
+    )
+    subprocess.Popen(
+        [sys.executable, "-c", send_code],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=CREATE_NO_WINDOW,
+    )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,30 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 4 — Scheduler & Briefings (COMPLETE)
+## Current Phase: Phase 5 — File Handling (READY)
+
+---
+
+### Session 5 — 2026-02-24 16:00 MYT (Phase 5 Prep: GCP Setup)
+
+**Completed:**
+- [x] Google Cloud Platform setup: project created, Drive API + Sheets API enabled, OAuth consent screen configured.
+- [x] OAuth 2.0 credentials obtained: Client ID, Client Secret, and Refresh Token via Google OAuth Playground.
+- [x] Scopes: `https://www.googleapis.com/auth/drive.file` (Drive) + `https://www.googleapis.com/auth/spreadsheets` (Sheets).
+- [x] Credentials added to .env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN.
+- [x] googleapis npm package installed (Google Drive v3 + Sheets v4 APIs).
+- [x] Connection verified: Drive API test passed — authenticated as bryanchong32@gmail.com.
+
+**Next Up (Phase 5 — File Handling):**
+- [ ] Create Google Drive folders programmatically (TaskRefs root + stream subfolders, receipts/YYYY/MM)
+- [ ] Create Google Sheets expense log → set GDRIVE_TASK_REFS_FOLDER_ID, GDRIVE_RECEIPTS_FOLDER_ID, GSHEETS_EXPENSE_LOG_ID
+- [ ] Google Drive upload module (src/bot1/files/drive.js)
+- [ ] Office → PDF conversion via LibreOffice (src/bot1/files/convert.js)
+- [ ] ATTACH_FILE intent handler (src/bot1/files/handlers.js)
+- [ ] File linking to Notion Master Tasks (File Links property)
+
+**Not needed yet:**
+- OpenAI API key for Whisper (deferred voice notes)
+- VPS deployment — still testing locally
 
 ---
 
@@ -167,6 +191,6 @@
 | 2. Todo Module | ✅ Complete | ADD/COMPLETE/LIST/UPDATE_TODO, stream routing, Notion |
 | 3. Quick Notes Module | ✅ Complete | Buffer, save/discard, intent shift, reminders, promote (no voice) |
 | 4. Scheduler & Briefings | ✅ Complete | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
-| 5. File Handling | ⬜ Not started | Drive upload, PDF conversion, ATTACH_FILE, task linking |
+| 5. File Handling | 🔧 GCP Ready | Drive upload, PDF conversion, ATTACH_FILE, task linking |
 | 6. Bot 2 — Receipts | ⬜ Not started | Vision extraction, Sheets logging, Drive storage, queries |
 | 7. Polish & Hardening | ⬜ Not started | Edge cases, crash recovery, health check, security audit |

@@ -1,6 +1,34 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 5 — File Handling (READY)
+## Current Phase: Phase 5 — File Handling (COMPLETE)
+
+---
+
+### Session 6 — 2026-02-24 22:50 MYT (Phase 5: File Handling)
+
+**Completed:**
+- [x] Google Drive folder structure created programmatically (scripts/setup-google.js): TaskRefs/ root + 5 stream subfolders (Minionions, KLN, Overdrive, Personal, Property) + receipts/ folder (Bot 2).
+- [x] Google Sheets "Expense Log" spreadsheet created with headers (Bot 2, Phase 6).
+- [x] Environment variables set: GDRIVE_TASK_REFS_FOLDER_ID, GDRIVE_RECEIPTS_FOLDER_ID, GSHEETS_EXPENSE_LOG_ID.
+- [x] Google API auth helper (src/utils/google.js): OAuth2 client with auto-refresh, authenticated Drive v3 + Sheets v4 clients, withGoogleRetry() for exponential backoff.
+- [x] Google Drive upload module (src/bot1/files/drive.js): auto-discovers stream subfolders, date-prefixed filenames (YYYY-MM-DD_name), "anyone with link can view" sharing, retry on 429/5xx.
+- [x] Office → PDF conversion (src/bot1/files/convert.js): LibreOffice headless, 30s timeout, graceful fallback to original file on failure.
+- [x] ATTACH_FILE handler (src/bot1/files/handlers.js): downloads from Telegram, converts if Office doc, uploads to Drive, parses caption via Haiku for stream + task link hints, links to existing task (fuzzy search) or creates new Inbox task, temp file cleanup.
+- [x] Notion File Links appender (src/bot1/files/notionFiles.js): GET→append→PATCH (never overwrites), clickable rich_text links, 2000-char limit safety, sequential processing.
+- [x] Intent engine updated: ATTACH_FILE added to validIntents.
+- [x] Router updated: Phase 5 placeholder replaced with file handler, ATTACH_FILE text-only case handled (prompts user to send actual file), help text updated with FILES section.
+- [x] Startup verified: clean boot, all modules load, no regressions on Phase 1–4 features.
+
+**Next Up (Phase 6 — Bot 2: Receipts):**
+- [ ] Claude Vision receipt extraction (src/bot2/vision.js)
+- [ ] Google Sheets expense logging (src/bot2/sheets.js)
+- [ ] Google Drive receipt image upload (src/bot2/drive.js) — uses receipts/ folder
+- [ ] Bot 2 router: photo → Vision → Sheets + Drive, text → expense query
+- [ ] Expense query handlers (this month, by category, etc.)
+
+**Not needed yet:**
+- OpenAI API key for Whisper (deferred voice notes)
+- VPS deployment — still testing locally
 
 ---
 
@@ -13,18 +41,6 @@
 - [x] Credentials added to .env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN.
 - [x] googleapis npm package installed (Google Drive v3 + Sheets v4 APIs).
 - [x] Connection verified: Drive API test passed — authenticated as bryanchong32@gmail.com.
-
-**Next Up (Phase 5 — File Handling):**
-- [ ] Create Google Drive folders programmatically (TaskRefs root + stream subfolders, receipts/YYYY/MM)
-- [ ] Create Google Sheets expense log → set GDRIVE_TASK_REFS_FOLDER_ID, GDRIVE_RECEIPTS_FOLDER_ID, GSHEETS_EXPENSE_LOG_ID
-- [ ] Google Drive upload module (src/bot1/files/drive.js)
-- [ ] Office → PDF conversion via LibreOffice (src/bot1/files/convert.js)
-- [ ] ATTACH_FILE intent handler (src/bot1/files/handlers.js)
-- [ ] File linking to Notion Master Tasks (File Links property)
-
-**Not needed yet:**
-- OpenAI API key for Whisper (deferred voice notes)
-- VPS deployment — still testing locally
 
 ---
 
@@ -191,6 +207,6 @@
 | 2. Todo Module | ✅ Complete | ADD/COMPLETE/LIST/UPDATE_TODO, stream routing, Notion |
 | 3. Quick Notes Module | ✅ Complete | Buffer, save/discard, intent shift, reminders, promote (no voice) |
 | 4. Scheduler & Briefings | ✅ Complete | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
-| 5. File Handling | 🔧 GCP Ready | Drive upload, PDF conversion, ATTACH_FILE, task linking |
+| 5. File Handling | ✅ Complete | Drive upload, PDF conversion, ATTACH_FILE, task linking |
 | 6. Bot 2 — Receipts | ⬜ Not started | Vision extraction, Sheets logging, Drive storage, queries |
 | 7. Polish & Hardening | ⬜ Not started | Edge cases, crash recovery, health check, security audit |

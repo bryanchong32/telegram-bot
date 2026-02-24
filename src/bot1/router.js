@@ -6,6 +6,7 @@
  * Phase 2: Routes text messages through the intent engine to todo handlers.
  * Phase 3: Adds draft buffer check before intent engine for notes.
  * Phase 4: Adds reminder:done and reminder:snooze callback handlers.
+ * Phase 5: Adds file handling (photo/document → Drive upload + task linking).
  */
 
 const { Keyboard } = require('grammy');
@@ -26,6 +27,7 @@ const {
   handleDraftDiscard,
   autoSaveDraft,
 } = require('./notes/handlers');
+const { handleAttachFile } = require('./files/handlers');
 const {
   getDraft,
   appendToDraft,
@@ -70,7 +72,7 @@ function buildMainKeyboard() {
 /* ─── Help text ─── */
 
 const HELP_TEXT =
-  '📖 What I Can Do\n\n' +
+  'What I Can Do\n\n' +
   'TASKS\n' +
   '• "add todo: submit KLN report by Friday"\n' +
   '• "done with invoice task"\n' +
@@ -84,12 +86,17 @@ const HELP_TEXT =
   'REMINDERS\n' +
   '• "remind me Friday 9am check lease renewal"\n' +
   '• /reminders to see active reminders\n\n' +
+  'FILES\n' +
+  '• Send any file (photo, PDF, doc) — uploaded to Google Drive\n' +
+  '• Add a caption to link it to a task: "for the KLN report"\n' +
+  '• No caption → creates a new Inbox task with the filename\n' +
+  '• Office docs (docx/xlsx/pptx) auto-convert to PDF\n\n' +
   'PROMOTE NOTE → TASK\n' +
   '• Save a note, then reply "promote"\n\n' +
   'TIPS\n' +
   '• Send multiple messages — I\'ll buffer them into one note\n' +
   '• Tap Save/Discard when the draft preview appears\n' +
-  '• Use the buttons below ↓ for quick access';
+  '• Use the buttons below for quick access';
 
 /**
  * Registers all command and message handlers on the bot instance.
@@ -232,6 +239,15 @@ function registerRouter(bot) {
           await handleUpdateTodo(ctx, intent);
           break;
 
+        /* File intent — text-only ATTACH_FILE (no file attached).
+           Tell user to send the actual file. */
+        case 'ATTACH_FILE':
+          await ctx.reply(
+            'It sounds like you want to attach a file. ' +
+            'Send the file (photo, PDF, or document) and I\'ll upload it to Drive.'
+          );
+          break;
+
         /* Notes module intents */
         case 'ADD_NOTE':
           await handleAddNote(ctx, intent, botInstance);
@@ -306,11 +322,18 @@ function registerRouter(bot) {
   });
 
   /**
-   * File/photo/document handler — Phase 5: will route to ATTACH_FILE handler.
+   * File/photo/document handler — routes to ATTACH_FILE handler.
+   * Downloads from Telegram, converts if needed, uploads to Drive,
+   * and links to a task (existing or new Inbox task).
    */
   bot.on(['message:photo', 'message:document'], async (ctx) => {
     logger.info('Bot 1 file received', { chatId: ctx.chat.id });
-    await ctx.reply('File received. File handling coming in Phase 5.');
+    try {
+      await handleAttachFile(ctx);
+    } catch (err) {
+      logger.error('File handler error', { error: err.message, stack: err.stack });
+      await ctx.reply('Something went wrong processing your file. Please try again.');
+    }
   });
 }
 

@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 16:00 MYT | Updated By: Claude Code (Session 5)
+# Last Updated: 2026-02-24 22:50 MYT | Updated By: Claude Code (Session 6)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 5 Ready — GCP setup complete, ready to build File Handling
-**Last Updated:** 2026-02-24 16:00 MYT
+**Phase:** Phase 5 Complete — ready for Phase 6 (Bot 2: Receipts)
+**Last Updated:** 2026-02-24 22:50 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -268,19 +268,20 @@ Then summarise to Bryan:
 - 2026-02-24 14:00 — Phase 3 Quick Notes Module complete: draft buffer (SQLite, 5s timer, 1hr timeout, intent shift detection), notes handlers (ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK), Notion Quick Notes CRUD, draft Save/Discard callbacks. UX: persistent reply keyboard (6 buttons), /help command, setMyCommands, /ideas + /reminders shortcuts. Tested from Telegram.
 - 2026-02-24 15:00 — Phase 4 Scheduler & Briefings complete: scheduler executes 4 job types (briefing/review/reminder/recurring), daily briefing composer (08:00 MYT), weekly review composer (Sun 20:00 MYT), reminder Done/Snooze buttons, recurring task → Notion, cron-parser for rescheduling, missed-trigger detection on startup, seed script. SQLite seeded with default jobs.
 - 2026-02-24 16:00 — GCP setup complete: Google Cloud project created, Drive + Sheets APIs enabled, OAuth 2.0 credentials obtained via OAuth Playground, connection verified (bryanchong32@gmail.com). googleapis package installed.
+- 2026-02-24 22:50 — Phase 5 File Handling complete: Google Drive folders created (TaskRefs + 5 stream subfolders + receipts), Sheets expense log created, Google auth helper (utils/google.js), Drive upload module (date-prefix, sharing, retry), Office→PDF conversion (LibreOffice headless, graceful fallback), ATTACH_FILE handler (download→convert→upload→link, Haiku caption parsing), Notion File Links appender (GET→append→PATCH), router + intent engine updated. Startup verified clean.
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 5: File Handling — Drive upload module, Office→PDF conversion, ATTACH_FILE intent, file linking to Notion tasks
-- Create Google Drive folders (TaskRefs, receipts) and Google Sheets expense log programmatically → set GDRIVE_TASK_REFS_FOLDER_ID, GDRIVE_RECEIPTS_FOLDER_ID, GSHEETS_EXPENSE_LOG_ID
+- Phase 6: Bot 2 — Receipts (Claude Vision extraction, Sheets logging, Drive storage, expense queries)
 
 **Pending Bryan's Action:**
 - Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
+- Test file handling from Telegram (send a photo/PDF/doc with and without captions)
 
 **Known Issues / Blockers:**
-- GDRIVE_TASK_REFS_FOLDER_ID, GDRIVE_RECEIPTS_FOLDER_ID, GSHEETS_EXPENSE_LOG_ID still empty — will be created programmatically in Phase 5
+- LibreOffice must be installed on VPS for Office→PDF conversion (`apt-get install libreoffice`). Not available locally on Windows — conversion will gracefully fall back to uploading originals until VPS deployment.
 - Voice notes (Whisper) deferred — no OpenAI API key needed yet
 - VPS deployment deferred until ready for production testing (Nginx domain + SSL setup needed)
 
@@ -292,6 +293,9 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-24 22:50 | Dedicated Haiku call for file caption parsing | Reuse full intent engine | File messages bypass the text intent engine — caption only needs stream + task link extraction. Focused prompt is cheaper and more reliable. Falls back to keyword inference on failure. | Low |
+| 2026-02-24 22:50 | Dynamic stream folder discovery via Drive API | Hardcode subfolder IDs in .env | Listing TaskRefs/ subfolders on first use and caching is more resilient than 5 hardcoded IDs. One extra API call on startup, then zero overhead. | Low |
+| 2026-02-24 22:50 | Separate notionFiles.js for File Links | Extend todo/notion.js | File Links handling is file-module-specific. Keeping it in files/ folder maintains clean separation. todo/notion.js stays focused on task CRUD. | Low |
 | 2026-02-24 15:00 | cron-parser npm package for next_run_at | Hand-code cron parser | node-cron doesn't expose "next occurrence" calculator. cron-parser handles DST, month boundaries, leap years. Tiny package, low effort to reverse. | Low |
 | 2026-02-24 14:00 | Intent shift only after 5s preview shown | Check on every message | Within 5s rapid-fire → just append (zero cost). After preview shown → Haiku shift check. Safe fallback: assume continues_draft on failure. | Low |
 | 2026-02-24 14:00 | Persistent reply keyboard for UX | Text-only interface | 6-button keyboard + setMyCommands + /help. Bryan found features hard to discover. Zero API cost for button taps. | Low |

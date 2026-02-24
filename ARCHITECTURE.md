@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Telegram Bots
 
-**Last Updated:** 2026-02-24 16:00 MYT
+**Last Updated:** 2026-02-24 22:50 MYT
 
 ---
 
@@ -138,11 +138,11 @@ Message type?
 | `src/bot1/` | Bot 1 — Personal Assistant (router, intent engine, modules) |
 | `src/bot1/todo/` | Todo module — handlers + Notion queries |
 | `src/bot1/notes/` | Quick Notes module — buffer, handlers, Notion queries |
-| `src/bot1/files/` | File handling — Drive upload, PDF conversion |
+| `src/bot1/files/` | File handling — Drive upload, PDF conversion, Notion file links, ATTACH_FILE handler |
 | `src/bot1/briefing/` | Daily briefing + weekly review composers |
 | `src/bot2/` | Bot 2 — Receipt Tracker (router, vision, sheets, drive) |
 | `src/shared/` | Shared infra — SQLite, scheduler, auth, config |
-| `src/utils/` | Helpers — Notion API, Anthropic API, dates, logging |
+| `src/utils/` | Helpers — Notion API, Anthropic API, Google API, dates, logging |
 | `docs/` | Original spec documents |
 | `data/` | SQLite database file (gitignored) |
 
@@ -178,6 +178,7 @@ apt-get install libreoffice    # Office → PDF conversion (ATTACH_FILE)
 |---|---|---|---|
 | Intent classification | Anthropic | Haiku | ~$0.0003/call |
 | Intent shift detection | Anthropic | Haiku | ~$0.0003/call |
+| File caption parsing | Anthropic | Haiku | ~$0.0003/call |
 | Note title/type/stream generation | Anthropic | Sonnet | ~$0.003/call |
 | Receipt extraction | Anthropic | Sonnet (vision) | ~$0.01/image |
 | Conversational reply (UNKNOWN) | Anthropic | Sonnet | ~$0.003/call |

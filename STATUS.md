@@ -1,6 +1,44 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Pre-build (Specs & Planning Complete)
+## Current Phase: Phase 1 — Foundation (COMPLETE)
+
+---
+
+### Session 1 — 2026-02-24 12:15 MYT (Phase 1: Foundation)
+
+**Completed:**
+- [x] Project scaffolding: package.json, folder structure per ARCHITECTURE.md, .env, .env.example, .gitignore
+- [x] Dependencies installed (all latest): grammy 1.40.0, better-sqlite3 12.6.2, @notionhq/client 5.9.0, node-cron 4.2.1, @anthropic-ai/sdk 0.78.0, dotenv 17.3.1, express 5.2.1
+- [x] Shared modules: config.js (env loader with required/optional), auth.js (user ID whitelist middleware), db.js (SQLite with 3 tables), logger.js (structured JSON logging, no sensitive content)
+- [x] Bot 1 (Personal Assistant): grammY setup, router with /start, /health, text echo, file/photo/callback_query placeholders
+- [x] Bot 2 (Receipt Tracker): grammY setup, router with /start, /health, receipt/text placeholders
+- [x] Health check: HTTP GET /health endpoint (JSON), Telegram /health command (both bots), checks SQLite + Notion + Anthropic + pending_sync queue
+- [x] Entry point (src/index.js): Express on port 3003, long polling (dev) vs webhook (production), graceful shutdown (SIGTERM/SIGINT), background workers started
+- [x] Notion databases created via API: Master Tasks (9 properties, all select options) + Quick Notes (8 properties, all select options) — under "Todo telegram" parent page
+- [x] PM2 ecosystem.config.js + Nginx server block template (nginx/telegram-bots.conf)
+- [x] Utility scripts: scripts/create-notion-dbs.js, scripts/set-webhooks.js
+- [x] Utils: notion.js (retry with exponential backoff), anthropic.js (Haiku/Sonnet routing), dates.js (MYT helpers)
+- [x] Scheduler + pending sync workers (placeholder loops, ready for Phase 4)
+- [x] Git repo initialized on `dev` branch, initial commit made
+- [x] Startup verified: both bots connect, SQLite tables created, Express listens on 3003
+
+**Notion Database IDs (created this session):**
+- Master Tasks: `ea1b4dc4-3b01-4e23-b0af-fdee9eee9eb3`
+- Quick Notes: `ad7580b5-1d84-4ac1-95d6-530146cf5ae4`
+
+**Next Up (Phase 2 — Todo Module):**
+- [ ] Intent engine (Claude Haiku classification)
+- [ ] Stream router (shared keyword → stream mapping)
+- [ ] ADD_TODO handler → Notion Master Tasks
+- [ ] COMPLETE_TODO handler (fuzzy match + confirm)
+- [ ] LIST_TODOS handler (filters: today/inbox/waiting/upcoming/all)
+- [ ] UPDATE_TODO handler (field updates, notes always appended)
+- [ ] Integration test: add/complete/list tasks from Telegram
+
+**Not needed yet:**
+- Google OAuth credentials (Phase 5/6)
+- OpenAI API key for Whisper (Phase 2 voice notes)
+- VPS deployment (Nginx + webhook setup) — deferred until ready for production testing
 
 ---
 
@@ -21,37 +59,20 @@
 - [x] Notion integration created (internal, workspace: Bryan's Notion)
 - [x] Voice notes (Whisper) deferred to Phase 2
 
-**Not started (Phase 1 — Foundation):**
-- [ ] Project scaffolding (package.json, folder structure, .env.example, .gitignore)
-- [ ] SQLite database setup (3 tables: draft_buffer, scheduled_jobs, pending_sync)
-- [ ] Telegram Bot 1 webhook + user ID whitelist
-- [ ] Notion databases creation via MCP (Master Tasks, Quick Notes) with all properties and views
-- [ ] PM2 process + Nginx webhook config (port 3003)
-- [ ] Health check command (/health)
-- [ ] Basic message receipt + echo test
-
-**Pending Bryan's Action:**
-- [ ] Share a Notion page with the `telegram-bot` integration (for MCP database creation)
-- [ ] Get Telegram user ID via @userinfobot
-- [ ] Save bot tokens + Notion token into .env on VPS (during Phase 1)
-
-**Not needed yet:**
-- Google OAuth credentials (Phase 5/6)
-- OpenAI API key for Whisper (Phase 2)
-
 ---
 
 ### Known Issues
 - VPS shared with ECOMWAVE CRM — PM2 process names must not conflict. Use `telegram-bots` on port 3003.
-- Nginx needs separate server block or path-based routing for bot webhooks
-- Anthropic API key can be reused from ECOMWAVE CRM
+- Nginx config template needs domain placeholder replaced before deployment
+- Anthropic API key reused from ECOMWAVE CRM
+- punycode deprecation warning from Node.js 22+ — harmless, upstream dependency issue
 
 ### Build Phase Overview
 
 | Phase | Status | Scope |
 |---|---|---|
 | 0. Planning | ✅ Complete | Specs, audit, decisions, docs |
-| 1. Foundation | ⬜ Not started | Project setup, webhook, SQLite, Notion DBs, auth |
+| 1. Foundation | ✅ Complete | Project setup, webhook, SQLite, Notion DBs, auth |
 | 2. Todo Module | ⬜ Not started | ADD/COMPLETE/LIST/UPDATE_TODO, stream routing, Notion |
 | 3. Quick Notes Module | ⬜ Not started | Buffer, save/discard, intent shift, reminders, promote (no voice) |
 | 4. Scheduler & Briefings | ⬜ Not started | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |

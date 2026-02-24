@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 00:00 MYT | Updated By: Bryan (initial setup)
+# Last Updated: 2026-02-24 12:15 MYT | Updated By: Claude Code (Session 1)
 
 ---
 
@@ -53,7 +53,7 @@ Read these before building. They are the canonical specs:
 | Layer | Technology | Notes |
 |---|---|---|
 | Runtime | Node.js | Single runtime for both bots |
-| Bot Framework | grammY (or node-telegram-bot-api) | Telegram Bot API wrapper — decide during Phase 1 setup |
+| Bot Framework | grammY v1.40.0 | Telegram Bot API wrapper — chosen over node-telegram-bot-api for better modern JS support, built-in webhook adapter |
 | Database (local) | SQLite via better-sqlite3 | Draft buffer, scheduler, fallback queue — NOT for primary data |
 | Database (primary) | Notion API via @notionhq/client | Master Tasks DB + Quick Notes DB — source of truth for all tasks/notes |
 | AI — Intent Parsing | Anthropic API (Haiku for simple, Sonnet for complex) | Intent classification, title generation, stream inference |
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Pre-build (specs complete, audit done, decisions made)
-**Last Updated:** 2026-02-24 00:00 MYT
+**Phase:** Phase 1 Complete — ready for Phase 2 (Todo Module)
+**Last Updated:** 2026-02-24 12:15 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -263,22 +263,21 @@ Then summarise to Bryan:
 - 2026-02-24 — GitHub repo created: https://github.com/bryanchong32/telegram-bot.git
 - 2026-02-24 — Telegram bots created via @BotFather (tokens ready, not yet in .env)
 - 2026-02-24 — Notion integration created (internal, workspace: Bryan's Notion)
+- 2026-02-24 12:15 — Phase 1 Foundation complete: scaffolding, all deps (latest), SQLite (3 tables), both bots running (grammY + Express), health check, Notion DBs created, PM2/Nginx configs, Git initialized on `dev` branch
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 1: Foundation — project setup, Telegram webhook, SQLite, Notion DB creation via MCP
+- Phase 2: Todo Module — intent engine, stream router, ADD/COMPLETE/LIST/UPDATE_TODO handlers, Notion integration
 
 **Pending Bryan's Action:**
-- Share a Notion page with the `telegram-bot` integration (so Claude Code can create DBs via MCP)
-- Save bot tokens + Notion token into .env on VPS (during Phase 1 setup)
-- Get Telegram user ID via @userinfobot (for ALLOWED_TELEGRAM_USER_ID)
+- None currently
 
 **Known Issues / Blockers:**
-- Notion databases (Master Tasks, Quick Notes) not yet created — Claude Code will create via MCP in Phase 1
 - Google OAuth credentials needed for Drive + Sheets (deferred to Phase 5/6)
 - Voice notes (Whisper) deferred to Phase 2 — no OpenAI API key needed yet
+- VPS deployment deferred until ready for production testing (Nginx domain + SSL setup needed)
 
 ---
 
@@ -288,6 +287,8 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-24 12:10 | grammY as bot framework | node-telegram-bot-api | More actively maintained, built-in webhook adapter, first-class callback_query support. Bryan approved. | Low |
+| 2026-02-24 12:10 | Notion DB creation via API script (not MCP) | MCP server, manual creation | Direct API script simpler for a one-time operation. Script saved in scripts/ for reference. | Low |
 | 2026-02-24 | Defer voice notes (Whisper) to Phase 2 | Include in Phase 1 MVP | Not a core need right now. Saves an OpenAI API key setup and dependency. Can add later by adding openai package + OPENAI_API_KEY env var. Notes module keeps Voice as a type — just not triggered yet. | Low |
 | 2026-02-24 | Node.js as single runtime | Python, mixed stack | Specs lean Node (better-sqlite3, @notionhq/client, node-cron all referenced). Telegram bot ecosystem mature in Node. Single runtime = one process, simpler VPS. | Medium |
 | 2026-02-24 | Draft buffer takes priority over global intent engine | Global intent engine first | Natural UX — mid-note, you don't want "remind me" swallowed by global router. Buffer checks first, releases to global only on intent shift. | Low |
@@ -326,8 +327,8 @@ ALLOWED_TELEGRAM_USER_ID=     # Bryan's Telegram user ID (get via @userinfobot)
 
 # Notion
 NOTION_TOKEN=                 # From notion.so/my-integrations (internal integration)
-NOTION_TASKS_DB_ID=           # Created by Claude Code via MCP during Phase 1
-NOTION_QUICKNOTES_DB_ID=      # Created by Claude Code via MCP during Phase 1
+NOTION_TASKS_DB_ID=           # Created via API script — Session 1 (2026-02-24)
+NOTION_QUICKNOTES_DB_ID=      # Created via API script — Session 1 (2026-02-24)
 
 # Anthropic (Claude)
 ANTHROPIC_API_KEY=            # Already exists (shared with ECOMWAVE)

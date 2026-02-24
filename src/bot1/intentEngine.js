@@ -90,6 +90,57 @@ Triggers: "change", "update", "push", "reschedule", "move", "change urgency", "a
 
 Only include fields in "updates" that the user explicitly wants to change. Omit or set to null for unchanged fields.
 
+### ADD_NOTE
+User wants to capture a quick note, idea, thought, or meeting summary for later reference.
+Triggers: "idea:", "note:", "meeting:", "remember:", or any message that sounds like capturing a thought/idea but NOT a specific actionable task.
+{
+  "intent": "ADD_NOTE",
+  "content": "the user's message text as-is"
+}
+
+Important: ADD_NOTE vs ADD_TODO distinction:
+- ADD_TODO = specific actionable task ("submit invoice by Friday", "call John", "buy groceries")
+- ADD_NOTE = thought, idea, brainstorm, meeting notes, something to remember ("idea: tiered pricing for OD", "meeting with client — discussed renewal terms", "remember that KLN prefers monthly reports")
+
+### SET_REMINDER
+User wants to be reminded about something at a specific time.
+Triggers: "remind me", "reminder", "set reminder", "alert me", "ping me".
+{
+  "intent": "SET_REMINDER",
+  "message": "what to be reminded about",
+  "remind_at": "YYYY-MM-DDTHH:MM:SS or null"
+}
+
+Rules for SET_REMINDER:
+- remind_at: Resolve relative dates/times ("tomorrow 9am" = next day 09:00, "Friday 3pm" = next Friday 15:00). Use 24h format. If no time given, default to 09:00. If no date at all, return null.
+- message: The reminder text without time references.
+
+### LIST_NOTES
+User wants to see their saved notes.
+Triggers: "show notes", "my notes", "ideas", "meeting notes", "show reminders".
+{
+  "intent": "LIST_NOTES",
+  "filter": "all|ideas|meetings|voice|reminders",
+  "search_term": "optional keyword search or null"
+}
+
+Filter rules:
+- "all" — default if user says "my notes", "show notes"
+- "ideas" — if user says "ideas", "my ideas", "show ideas"
+- "meetings" — if user says "meeting notes", "meetings"
+- "voice" — if user says "voice notes"
+- "reminders" — if user says "reminders", "show reminders"
+- If user includes a specific search term (e.g. "notes about pricing"), set filter to "all" and search_term to the keyword.
+
+### PROMOTE_TO_TASK
+User wants to convert a note into a task.
+Triggers: "promote", "make task", "convert to task", "turn into task".
+{
+  "intent": "PROMOTE_TO_TASK",
+  "note_title": "keywords to find the note, or null if just 'promote' (meaning: promote the last saved note)",
+  "stream": "Minionions|KLN|Overdrive|Personal|Property or null"
+}
+
 ### UNKNOWN
 Message doesn't match any intent above — it's conversational, a question, or something the bot can't handle.
 {
@@ -138,7 +189,11 @@ async function classifyIntent(text) {
     const parsed = JSON.parse(cleaned);
 
     /* Validate that we got a recognised intent */
-    const validIntents = ['ADD_TODO', 'COMPLETE_TODO', 'LIST_TODOS', 'UPDATE_TODO', 'UNKNOWN'];
+    const validIntents = [
+      'ADD_TODO', 'COMPLETE_TODO', 'LIST_TODOS', 'UPDATE_TODO',
+      'ADD_NOTE', 'SET_REMINDER', 'LIST_NOTES', 'PROMOTE_TO_TASK',
+      'UNKNOWN',
+    ];
     if (!validIntents.includes(parsed.intent)) {
       logger.warn('Intent engine returned unrecognised intent', { intent: parsed.intent });
       return { intent: 'UNKNOWN', message: text };

@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Telegram Bots
 
-**Last Updated:** 2026-02-24 00:00 MYT
+**Last Updated:** 2026-02-24 14:00 MYT
 
 ---
 
@@ -79,26 +79,32 @@ User ID in whitelist? → No → silently ignore
     ↓ Yes
 Message type?
     ├── /command → Command handler (bypass Claude)
-    ├── File → ATTACH_FILE handler
+    │     /today, /inbox, /notes, /ideas, /reminders, /help, /health
+    ├── File → ATTACH_FILE handler (Phase 5)
     └── Text ↓
             ↓
+Keyboard button? (e.g. "📋 Today") → handle directly (zero API cost)
+    ↓ No
 Draft buffer open?
-    ├── Yes → Intent shift check (Haiku)
+    ├── Yes, BUFFERING (within 5s) → append to buffer, reset timer (zero API cost)
+    ├── Yes, PREVIEWING (after 5s) → Intent shift check (Haiku)
     │         ├── Continues draft → append to buffer, reset timer
-    │         └── New intent → auto-save draft → release to intent engine
+    │         └── New intent → auto-save draft (Sonnet) → release to intent engine
     └── No → Intent engine (Haiku)
                 ↓
           Route by intent:
             ├── ADD_TODO / COMPLETE / LIST / UPDATE → todo/handlers.js → Notion
-            ├── ADD_NOTE → notes/buffer.js (open new draft)
+            ├── ADD_NOTE → notes/buffer.js (open new draft, start 5s timer)
             ├── SET_REMINDER → notes/handlers.js → Notion + scheduler
             ├── LIST_NOTES → notes/handlers.js → Notion query
             ├── PROMOTE_TO_TASK → notes/handlers.js → Notion (both DBs)
-            ├── ATTACH_FILE → files/handlers.js → Drive + Notion
-            └── UNKNOWN → conversational reply (Sonnet)
+            ├── ATTACH_FILE → files/handlers.js → Drive + Notion (Phase 5)
+            └── UNKNOWN → conversational reply (Haiku)
                 ↓
           Confirmation reply → Telegram
 ```
+
+**Persistent reply keyboard:** 6 buttons always visible at bottom — Today, Inbox, My Notes, My Ideas, Reminders, Help. Routed before intent engine (zero cost).
 
 **Note:** Voice notes deferred to Phase 2. When added, voice messages will go through Whisper API → transcribed text enters flow as regular text with source=Voice flag.
 

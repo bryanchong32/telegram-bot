@@ -19,6 +19,21 @@ bot1.use(authMiddleware);
 /* Register all command + message handlers */
 registerRouter(bot1);
 
+/* Register "/" menu commands via Bot API so Telegram shows
+   the command list when user taps the menu button or types "/" */
+bot1.api.setMyCommands([
+  { command: 'today', description: "Today's tasks" },
+  { command: 'inbox', description: 'Inbox tasks' },
+  { command: 'notes', description: 'All notes' },
+  { command: 'ideas', description: 'Idea notes only' },
+  { command: 'reminders', description: 'Active reminders' },
+  { command: 'help', description: 'How to use this bot' },
+  { command: 'health', description: 'System status' },
+]).catch((err) => {
+  /* Non-fatal — bot works fine without registered commands, just less discoverable */
+  logger.warn('Failed to set bot commands menu', { error: err.message });
+});
+
 /* Error handler — log and notify user of unexpected failures */
 bot1.catch((err) => {
   logger.error('Bot 1 unhandled error', {

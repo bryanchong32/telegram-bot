@@ -1,6 +1,35 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 2 — Todo Module (COMPLETE)
+## Current Phase: Phase 3 — Quick Notes Module (COMPLETE)
+
+---
+
+### Session 3 — 2026-02-24 14:00 MYT (Phase 3: Quick Notes Module + UX)
+
+**Completed:**
+- [x] Notes Notion CRUD (src/bot1/notes/notion.js): createNote, queryNotes (5 filters), searchNotes (fuzzy), markNotePromoted. Quick Notes DB integration with all properties (Title, Content, Type, Stream, Remind At, Promoted, Source).
+- [x] Draft buffer state machine (src/bot1/notes/buffer.js): SQLite persistence (crash-safe), 5s silence timer → static preview with Save/Discard, 1hr timeout ping, intent shift detection (Haiku — only after preview shown, not during rapid typing), title/type/stream generation (Sonnet — 1 call per save), VPS restart recovery (restoreOpenDrafts).
+- [x] Notes handlers (src/bot1/notes/handlers.js): ADD_NOTE (opens buffer), SET_REMINDER (immediate save + scheduler entry), LIST_NOTES (filtered queries with relative times), PROMOTE_TO_TASK (note → Master Task, marks Promoted), handleDraftSave/Discard callbacks, autoSaveDraft (for intent shift).
+- [x] Intent engine updated (src/bot1/intentEngine.js): 4 new intents — ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK. Clear ADD_NOTE vs ADD_TODO distinction guidance. Valid intents list expanded.
+- [x] Router updated (src/bot1/router.js): Draft buffer check before intent engine (Step 0), keyboard button shortcuts (Step 0b), all 4 notes intents routed, draft:save/discard callback handling, /notes /ideas /reminders commands.
+- [x] Entry point updated (src/index.js): restoreOpenDrafts on startup, clearAllState on shutdown.
+- [x] UX: Persistent reply keyboard (6 buttons — Today, Inbox, My Notes, My Ideas, Reminders, Help). Zero API cost for navigation.
+- [x] UX: Telegram menu commands registered via setMyCommands API (src/bot1/bot.js).
+- [x] UX: /help command with full feature guide and example trigger phrases.
+- [x] UX: /ideas and /reminders shortcut commands (bypass Claude).
+- [x] Startup verified: clean boot, all modules load, no regressions on Phase 2 todo features.
+
+**Next Up (Phase 4 — Scheduler & Briefings):**
+- [ ] Unified scheduler worker (execute pending jobs from scheduled_jobs table)
+- [ ] Recurring task creation (cron_expr → Notion Master Tasks)
+- [ ] Daily briefing (08:00 MYT) — tasks + inbox count + reminders
+- [ ] Weekly review (Sun 20:00 MYT) — week summary + upcoming
+- [ ] Reminder delivery (fire at remind_at → Telegram message with Done/Snooze buttons)
+
+**Not needed yet:**
+- Google OAuth credentials (Phase 5/6)
+- OpenAI API key for Whisper (deferred voice notes)
+- VPS deployment — still testing locally
 
 ---
 

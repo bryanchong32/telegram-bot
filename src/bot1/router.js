@@ -1,11 +1,18 @@
 /**
  * Bot 1 — Master message router.
- * Flow: auth (already applied) → /command check → type check → buffer/intent.
+ * Flow: auth (already applied) → /command check → keyboard button check →
+ *       draft buffer check → intent engine.
  *
  * Phase 2: Routes text messages through the intent engine to todo handlers.
- * Phase 3+: Will add draft buffer check before intent engine for notes.
+ * Phase 3: Adds draft buffer check before intent engine for notes.
+ *   - If a draft is open and in PREVIEWING state, run intent shift detection.
+ *   - If the draft is still in BUFFERING (within 5s), just append.
+ *   - Routes ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK to notes handlers.
+ *   - Handles draft:save and draft:discard callback queries.
+ *   - Persistent reply keyboard for quick navigation (zero API cost).
  */
 
+const { Keyboard } = require('grammy');
 const { classifyIntent } = require('./intentEngine');
 const {
   handleAddTodo,
@@ -14,25 +21,97 @@ const {
   handleListTodos,
   handleUpdateTodo,
 } = require('./todo/handlers');
+const {
+  handleAddNote,
+  handleSetReminder,
+  handleListNotes,
+  handlePromoteToTask,
+  handleDraftSave,
+  handleDraftDiscard,
+  autoSaveDraft,
+} = require('./notes/handlers');
+const {
+  getDraft,
+  appendToDraft,
+  startSilenceTimer,
+  clearSilenceTimer,
+  checkIntentShift,
+  isPreviewShown,
+  getDraftContent,
+} = require('./notes/buffer');
 const { chat } = require('../utils/anthropic');
 const logger = require('../utils/logger');
+
+/* Store bot reference for timer callbacks (set during registerRouter) */
+let botInstance = null;
+
+/* ─── Persistent reply keyboard ─── */
+
+/* Button labels — used for both keyboard creation and text matching in router */
+const KB = {
+  TODAY: '📋 Today',
+  INBOX: '📥 Inbox',
+  NOTES: '📝 My Notes',
+  IDEAS: '💡 My Ideas',
+  REMINDERS: '⏰ Reminders',
+  HELP: '❓ Help',
+};
+
+/**
+ * Builds the persistent reply keyboard shown at the bottom of the chat.
+ * Compact (resize_keyboard), always visible (is_persistent).
+ */
+function buildMainKeyboard() {
+  return new Keyboard()
+    .text(KB.TODAY).text(KB.INBOX).row()
+    .text(KB.NOTES).text(KB.IDEAS).row()
+    .text(KB.REMINDERS).text(KB.HELP)
+    .resized()
+    .persistent();
+}
+
+/* ─── Help text ─── */
+
+const HELP_TEXT =
+  '📖 What I Can Do\n\n' +
+  'TASKS\n' +
+  '• "add todo: submit KLN report by Friday"\n' +
+  '• "done with invoice task"\n' +
+  '• "show today\'s tasks" or /today\n' +
+  '• "push Solasta deadline to March 1"\n\n' +
+  'NOTES\n' +
+  '• "idea: tiered pricing for Overdrive"\n' +
+  '  → I\'ll buffer your messages. Tap Save when done.\n' +
+  '• "meeting with client — discussed renewal"\n' +
+  '• "show my ideas" or /ideas\n\n' +
+  'REMINDERS\n' +
+  '• "remind me Friday 9am check lease renewal"\n' +
+  '• /reminders to see active reminders\n\n' +
+  'PROMOTE NOTE → TASK\n' +
+  '• Save a note, then reply "promote"\n\n' +
+  'TIPS\n' +
+  '• Send multiple messages — I\'ll buffer them into one note\n' +
+  '• Tap Save/Discard when the draft preview appears\n' +
+  '• Use the buttons below ↓ for quick access';
 
 /**
  * Registers all command and message handlers on the bot instance.
  * Called once during bot setup.
  */
 function registerRouter(bot) {
-  /* /start — welcome message */
+  botInstance = bot;
+
+  /* ─── Slash commands ─── */
+
+  /* /start — welcome message with persistent keyboard */
   bot.command('start', async (ctx) => {
     logger.info('Bot 1 /start command', { chatId: ctx.chat.id });
     await ctx.reply(
       'Hey Bryan! I\'m your Personal Assistant bot.\n\n' +
       'I can manage todos, quick notes, reminders, and send daily briefings.\n\n' +
-      'Commands:\n' +
-      '/today — Show today\'s tasks\n' +
-      '/inbox — Show inbox tasks\n' +
-      '/health — Check system status\n\n' +
-      'Or just send me a message and I\'ll figure out what to do with it.'
+      'Use the buttons below for quick access, or just type naturally.\n' +
+      'Send /help for a full guide with examples.',
+      { reply_markup: buildMainKeyboard() }
     );
   });
 
@@ -48,27 +127,98 @@ function registerRouter(bot) {
     await handleListTodos(ctx, { intent: 'LIST_TODOS', filter: 'inbox' });
   });
 
+  /* /notes — shortcut for LIST_NOTES with all filter (bypasses Claude) */
+  bot.command('notes', async (ctx) => {
+    logger.info('Bot 1 /notes command', { chatId: ctx.chat.id });
+    await handleListNotes(ctx, { intent: 'LIST_NOTES', filter: 'all' });
+  });
+
+  /* /ideas — shortcut for LIST_NOTES with ideas filter (bypasses Claude) */
+  bot.command('ideas', async (ctx) => {
+    logger.info('Bot 1 /ideas command', { chatId: ctx.chat.id });
+    await handleListNotes(ctx, { intent: 'LIST_NOTES', filter: 'ideas' });
+  });
+
+  /* /reminders — shortcut for LIST_NOTES with reminders filter (bypasses Claude) */
+  bot.command('reminders', async (ctx) => {
+    logger.info('Bot 1 /reminders command', { chatId: ctx.chat.id });
+    await handleListNotes(ctx, { intent: 'LIST_NOTES', filter: 'reminders' });
+  });
+
+  /* /help — full feature guide with examples */
+  bot.command('help', async (ctx) => {
+    logger.info('Bot 1 /help command', { chatId: ctx.chat.id });
+    await ctx.reply(HELP_TEXT, { reply_markup: buildMainKeyboard() });
+  });
+
   /* /health — system health check (handler registered in index.js via healthCommand) */
   /* Registered separately so health module can access db + Notion status */
 
   /**
-   * Text message handler — routes through intent engine to the correct handler.
+   * Text message handler — keyboard buttons → draft buffer → intent engine.
    *
    * Flow:
-   * 1. (Phase 3) Check if draft buffer is open → intent shift detection
-   * 2. Classify intent via Claude Haiku
+   * 0. Check if text matches a keyboard button → handle directly (zero API cost)
+   * 1. Check if draft buffer is open → handle buffer logic
+   * 2. If no open draft, classify intent via Claude Haiku
    * 3. Route to the appropriate handler
    */
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text;
-    logger.info('Bot 1 text message received', { chatId: ctx.chat.id });
+    const chatId = ctx.chat.id;
+    logger.info('Bot 1 text message received', { chatId });
 
     try {
-      /* Step 1: Classify the intent */
+      /* ─── Step 0: Keyboard button shortcuts (zero API cost) ─── */
+      const buttonHandled = await handleKeyboardButton(ctx, text);
+      if (buttonHandled) return;
+
+      /* ─── Step 1: Draft buffer check ─── */
+      const draft = getDraft(chatId);
+
+      if (draft) {
+        /* A draft is open — decide how to handle the new message */
+
+        if (!isPreviewShown(chatId)) {
+          /* Still in BUFFERING state (within 5s, preview not shown yet).
+             Just append the message and reset the silence timer. No API call. */
+          appendToDraft(chatId, text);
+          clearSilenceTimer(chatId);
+          startSilenceTimer(chatId, botInstance);
+          return;
+        }
+
+        /* In PREVIEWING state — run intent shift detection (1 Haiku call) */
+        const draftContent = getDraftContent(chatId);
+        const shiftResult = await checkIntentShift(draftContent, text);
+
+        if (shiftResult.continues_draft) {
+          /* Same topic — append to buffer, reset timers, go back to BUFFERING */
+          appendToDraft(chatId, text);
+          clearSilenceTimer(chatId);
+          startSilenceTimer(chatId, botInstance);
+          return;
+        }
+
+        /* Different intent — auto-save the current draft, then process new message */
+        const saved = await autoSaveDraft(chatId);
+        if (saved) {
+          await ctx.reply(
+            `Previous draft saved: "${saved.title}"\nReply "promote" to convert to task.`
+          );
+        } else {
+          await ctx.reply('Previous draft queued for sync (Notion unreachable).');
+        }
+
+        /* Fall through to intent engine for the new message */
+      }
+
+      /* ─── Step 2: Classify the intent ─── */
       const intent = await classifyIntent(text);
 
-      /* Step 2: Route to the correct handler */
+      /* ─── Step 3: Route to the correct handler ─── */
       switch (intent.intent) {
+        /* Todo module intents */
         case 'ADD_TODO':
           await handleAddTodo(ctx, intent);
           break;
@@ -85,9 +235,26 @@ function registerRouter(bot) {
           await handleUpdateTodo(ctx, intent);
           break;
 
+        /* Notes module intents */
+        case 'ADD_NOTE':
+          await handleAddNote(ctx, intent, botInstance);
+          break;
+
+        case 'SET_REMINDER':
+          await handleSetReminder(ctx, intent);
+          break;
+
+        case 'LIST_NOTES':
+          await handleListNotes(ctx, intent);
+          break;
+
+        case 'PROMOTE_TO_TASK':
+          await handlePromoteToTask(ctx, intent);
+          break;
+
         case 'UNKNOWN':
         default:
-          /* Conversational fallback — use Sonnet for a helpful reply */
+          /* Conversational fallback — use Haiku for a helpful reply */
           await handleUnknown(ctx, text);
           break;
       }
@@ -99,7 +266,7 @@ function registerRouter(bot) {
 
   /**
    * Callback query handler — routes inline button taps to the correct handler.
-   * Supports: complete:* (COMPLETE_TODO confirmation), draft:* (Phase 3)
+   * Supports: complete:* (COMPLETE_TODO), draft:* (Notes Save/Discard)
    */
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
@@ -110,7 +277,16 @@ function registerRouter(bot) {
       return;
     }
 
-    /* Phase 3: draft:save, draft:discard */
+    if (data === 'draft:save') {
+      await handleDraftSave(ctx, botInstance);
+      return;
+    }
+
+    if (data === 'draft:discard') {
+      await handleDraftDiscard(ctx);
+      return;
+    }
+
     /* Phase 4: reminder:done, reminder:snooze */
     await ctx.answerCallbackQuery({ text: 'Not yet implemented' });
   });
@@ -124,9 +300,50 @@ function registerRouter(bot) {
   });
 }
 
+/* ─── Keyboard button handler ─── */
+
 /**
- * Handles UNKNOWN intent — conversational reply using Claude Sonnet.
- * Gives a helpful response for messages that don't match any task intent.
+ * Checks if the text matches a persistent keyboard button label.
+ * If so, routes directly to the handler — zero API cost.
+ *
+ * @returns {boolean} — true if handled, false if not a button tap
+ */
+async function handleKeyboardButton(ctx, text) {
+  switch (text) {
+    case KB.TODAY:
+      await handleListTodos(ctx, { intent: 'LIST_TODOS', filter: 'today' });
+      return true;
+
+    case KB.INBOX:
+      await handleListTodos(ctx, { intent: 'LIST_TODOS', filter: 'inbox' });
+      return true;
+
+    case KB.NOTES:
+      await handleListNotes(ctx, { intent: 'LIST_NOTES', filter: 'all' });
+      return true;
+
+    case KB.IDEAS:
+      await handleListNotes(ctx, { intent: 'LIST_NOTES', filter: 'ideas' });
+      return true;
+
+    case KB.REMINDERS:
+      await handleListNotes(ctx, { intent: 'LIST_NOTES', filter: 'reminders' });
+      return true;
+
+    case KB.HELP:
+      await ctx.reply(HELP_TEXT, { reply_markup: buildMainKeyboard() });
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+/* ─── UNKNOWN intent handler ─── */
+
+/**
+ * Handles UNKNOWN intent — conversational reply using Claude Haiku.
+ * Gives a helpful response for messages that don't match any task or note intent.
  */
 async function handleUnknown(ctx, text) {
   try {
@@ -135,7 +352,7 @@ async function handleUnknown(ctx, text) {
         'You are Bryan\'s personal assistant Telegram bot. You help manage tasks, notes, and reminders. ' +
         'If the user\'s message seems like they want to do something task-related but you\'re not sure, ' +
         'suggest what they might mean. Keep replies short and helpful (1-3 sentences max). ' +
-        'You can suggest commands like /today, /inbox, or tell them to phrase task requests naturally.',
+        'You can suggest commands like /today, /inbox, /notes, or tell them to phrase requests naturally.',
       userMessage: text,
       model: 'haiku',
       maxTokens: 256,
@@ -147,8 +364,10 @@ async function handleUnknown(ctx, text) {
       'I\'m not sure what to do with that. Try:\n' +
       '- "add todo: ..." to create a task\n' +
       '- "done with ..." to complete a task\n' +
+      '- "idea: ..." to start a note\n' +
+      '- "remind me ..." to set a reminder\n' +
       '- /today to see today\'s tasks\n' +
-      '- /inbox to see unprocessed tasks'
+      '- /notes to see recent notes'
     );
   }
 }

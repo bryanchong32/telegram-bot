@@ -14,6 +14,7 @@ const { bot2 } = require('./bot2/bot');
 const { startScheduler, stopScheduler } = require('./shared/scheduler');
 const { startPendingSyncWorker, stopPendingSyncWorker } = require('./shared/pendingSync');
 const { runHealthChecks, formatHealthMessage } = require('./utils/health');
+const { restoreOpenDrafts, clearAllState } = require('./bot1/notes/buffer');
 const logger = require('./utils/logger');
 
 /**
@@ -99,6 +100,11 @@ async function main() {
     startBotWithRetry(bot2, 'Bot 2 (Receipt Tracker)');
   }
 
+  /* 5b. Restore open drafts from SQLite (VPS restart safety) */
+  restoreOpenDrafts(bot1).catch((err) => {
+    logger.error('Draft restoration failed', { error: err.message });
+  });
+
   /* 6. Start Express server (always, for health endpoint + webhooks in production) */
   const server = app.listen(config.PORT, () => {
     logger.info(`Express server listening on port ${config.PORT}`);
@@ -107,6 +113,7 @@ async function main() {
   /* 7. Graceful shutdown handler */
   const shutdown = async (signal) => {
     logger.info(`Received ${signal} — shutting down gracefully`);
+    clearAllState();
     stopScheduler();
     stopPendingSyncWorker();
     await bot1.stop();

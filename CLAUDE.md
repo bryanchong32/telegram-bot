@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 13:00 MYT | Updated By: Claude Code (Session 2)
+# Last Updated: 2026-02-24 14:00 MYT | Updated By: Claude Code (Session 3)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 2 Complete — ready for Phase 3 (Quick Notes Module)
-**Last Updated:** 2026-02-24 13:00 MYT
+**Phase:** Phase 3 Complete — ready for Phase 4 (Scheduler & Briefings)
+**Last Updated:** 2026-02-24 14:00 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -265,12 +265,13 @@ Then summarise to Bryan:
 - 2026-02-24 — Notion integration created (internal, workspace: Bryan's Notion)
 - 2026-02-24 12:15 — Phase 1 Foundation complete: scaffolding, all deps (latest), SQLite (3 tables), both bots running (grammY + Express), health check, Notion DBs created, PM2/Nginx configs, Git initialized on `dev` branch
 - 2026-02-24 13:00 — Phase 2 Todo Module complete: intent engine (Haiku), stream router, all 4 todo handlers (ADD/COMPLETE/LIST/UPDATE), Notion CRUD, queryDatabase helper, dev startup robustness (409 retry). All intents tested from Telegram.
+- 2026-02-24 14:00 — Phase 3 Quick Notes Module complete: draft buffer (SQLite, 5s timer, 1hr timeout, intent shift detection), notes handlers (ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK), Notion Quick Notes CRUD, draft Save/Discard callbacks. UX: persistent reply keyboard (6 buttons), /help command, setMyCommands, /ideas + /reminders shortcuts. Tested from Telegram.
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 3: Quick Notes Module — draft buffer, save/discard, intent shift detection, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK
+- Phase 4: Scheduler & Briefings — unified scheduler worker, recurring tasks, daily briefing (08:00), weekly review (Sun 20:00), reminder delivery with Done/Snooze buttons
 
 **Pending Bryan's Action:**
 - Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
@@ -288,6 +289,8 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-24 14:00 | Intent shift only after 5s preview shown | Check on every message | Within 5s rapid-fire → just append (zero cost). After preview shown → Haiku shift check. Safe fallback: assume continues_draft on failure. | Low |
+| 2026-02-24 14:00 | Persistent reply keyboard for UX | Text-only interface | 6-button keyboard + setMyCommands + /help. Bryan found features hard to discover. Zero API cost for button taps. | Low |
 | 2026-02-24 13:00 | Raw REST for Notion database queries | Use @notionhq/client dataSources.query() | @notionhq/client v5.x removed databases.query(). Built queryDatabase() helper calling POST /databases/{id}/query via fetch. | Low |
 | 2026-02-24 13:00 | 409 conflict retry on dev startup | Crash on conflict | Telegram keeps stale polling connections ~30s. Added deleteWebhook + startBotWithRetry (5 attempts, 5s delay). | Low |
 | 2026-02-24 13:00 | Haiku for UNKNOWN intent fallback | Sonnet | Only needs 1-3 sentences of suggestions. No complex reasoning. Keeps costs minimal. | Low |

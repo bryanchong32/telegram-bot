@@ -16,6 +16,27 @@ const { startPendingSyncWorker, stopPendingSyncWorker } = require('./shared/pend
 const { runHealthChecks, formatHealthMessage } = require('./utils/health');
 const logger = require('./utils/logger');
 
+/**
+ * Starts a bot with long polling, retrying on 409 conflicts.
+ * Telegram keeps stale polling connections for up to 30s after a process dies.
+ * This retries up to 5 times with 5s delays to wait it out.
+ */
+function startBotWithRetry(bot, label, attempt = 0) {
+  const maxAttempts = 5;
+
+  bot.start({
+    drop_pending_updates: true,
+    onStart: () => logger.info(`${label} started — long polling`),
+  }).catch((err) => {
+    if (err.error_code === 409 && attempt < maxAttempts) {
+      logger.warn(`${label} got 409 conflict, retrying in 5s (attempt ${attempt + 1}/${maxAttempts})`);
+      setTimeout(() => startBotWithRetry(bot, label, attempt + 1), 5000);
+    } else {
+      logger.error(`${label} failed to start`, { error: err.message });
+    }
+  });
+}
+
 async function main() {
   logger.info('Starting Telegram Bots', { port: config.PORT, env: config.NODE_ENV });
 
@@ -62,14 +83,20 @@ async function main() {
     app.post('/webhook/bot2', webhookCallback(bot2, 'express'));
     logger.info('Production mode — webhook routes registered');
   } else {
-    /* Development: Use long polling (no webhook needed, works without a public URL) */
-    logger.info('Development mode — starting long polling for both bots');
-    bot1.start({
-      onStart: () => logger.info('Bot 1 (Personal Assistant) started — long polling'),
-    });
-    bot2.start({
-      onStart: () => logger.info('Bot 2 (Receipt Tracker) started — long polling'),
-    });
+    /* Development: Use long polling (no webhook needed, works without a public URL).
+       Reset any stale polling sessions first via deleteWebhook, wait for Telegram
+       to release the connection, then start polling. */
+    logger.info('Development mode — resetting stale sessions before polling');
+
+    /* Call deleteWebhook with drop_pending_updates to clear any stale getUpdates */
+    await bot1.api.deleteWebhook({ drop_pending_updates: true });
+    await bot2.api.deleteWebhook({ drop_pending_updates: true });
+    logger.info('Stale sessions cleared — waiting for Telegram to release');
+    await new Promise((r) => setTimeout(r, 1000));
+
+    /* Start polling — catch 409 conflicts and retry instead of crashing */
+    startBotWithRetry(bot1, 'Bot 1 (Personal Assistant)');
+    startBotWithRetry(bot2, 'Bot 2 (Receipt Tracker)');
   }
 
   /* 6. Start Express server (always, for health endpoint + webhooks in production) */

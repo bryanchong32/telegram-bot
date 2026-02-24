@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 12:15 MYT | Updated By: Claude Code (Session 1)
+# Last Updated: 2026-02-24 13:00 MYT | Updated By: Claude Code (Session 2)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 1 Complete — ready for Phase 2 (Todo Module)
-**Last Updated:** 2026-02-24 12:15 MYT
+**Phase:** Phase 2 Complete — ready for Phase 3 (Quick Notes Module)
+**Last Updated:** 2026-02-24 13:00 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -264,19 +264,20 @@ Then summarise to Bryan:
 - 2026-02-24 — Telegram bots created via @BotFather (tokens ready, not yet in .env)
 - 2026-02-24 — Notion integration created (internal, workspace: Bryan's Notion)
 - 2026-02-24 12:15 — Phase 1 Foundation complete: scaffolding, all deps (latest), SQLite (3 tables), both bots running (grammY + Express), health check, Notion DBs created, PM2/Nginx configs, Git initialized on `dev` branch
+- 2026-02-24 13:00 — Phase 2 Todo Module complete: intent engine (Haiku), stream router, all 4 todo handlers (ADD/COMPLETE/LIST/UPDATE), Notion CRUD, queryDatabase helper, dev startup robustness (409 retry). All intents tested from Telegram.
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 2: Todo Module — intent engine, stream router, ADD/COMPLETE/LIST/UPDATE_TODO handlers, Notion integration
+- Phase 3: Quick Notes Module — draft buffer, save/discard, intent shift detection, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK
 
 **Pending Bryan's Action:**
-- None currently
+- Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
 
 **Known Issues / Blockers:**
 - Google OAuth credentials needed for Drive + Sheets (deferred to Phase 5/6)
-- Voice notes (Whisper) deferred to Phase 2 — no OpenAI API key needed yet
+- Voice notes (Whisper) deferred — no OpenAI API key needed yet
 - VPS deployment deferred until ready for production testing (Nginx domain + SSL setup needed)
 
 ---
@@ -287,6 +288,9 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-24 13:00 | Raw REST for Notion database queries | Use @notionhq/client dataSources.query() | @notionhq/client v5.x removed databases.query(). Built queryDatabase() helper calling POST /databases/{id}/query via fetch. | Low |
+| 2026-02-24 13:00 | 409 conflict retry on dev startup | Crash on conflict | Telegram keeps stale polling connections ~30s. Added deleteWebhook + startBotWithRetry (5 attempts, 5s delay). | Low |
+| 2026-02-24 13:00 | Haiku for UNKNOWN intent fallback | Sonnet | Only needs 1-3 sentences of suggestions. No complex reasoning. Keeps costs minimal. | Low |
 | 2026-02-24 12:10 | grammY as bot framework | node-telegram-bot-api | More actively maintained, built-in webhook adapter, first-class callback_query support. Bryan approved. | Low |
 | 2026-02-24 12:10 | Notion DB creation via API script (not MCP) | MCP server, manual creation | Direct API script simpler for a one-time operation. Script saved in scripts/ for reference. | Low |
 | 2026-02-24 | Defer voice notes (Whisper) to Phase 2 | Include in Phase 1 MVP | Not a core need right now. Saves an OpenAI API key setup and dependency. Can add later by adding openai package + OPENAI_API_KEY env var. Notes module keeps Voice as a type — just not triggered yet. | Low |

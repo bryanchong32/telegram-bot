@@ -1,6 +1,37 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 1 — Foundation (COMPLETE)
+## Current Phase: Phase 2 — Todo Module (COMPLETE)
+
+---
+
+### Session 2 — 2026-02-24 13:00 MYT (Phase 2: Todo Module)
+
+**Completed:**
+- [x] Intent engine (src/bot1/intentEngine.js): Claude Haiku classification into ADD_TODO, COMPLETE_TODO, LIST_TODOS, UPDATE_TODO, UNKNOWN. System prompt with dynamic date injection, JSON parsing with code fence stripping.
+- [x] Stream router (src/bot1/streamRouter.js): Keyword → stream mapping with confidence scoring. Shared module for todos and notes.
+- [x] ADD_TODO handler → Notion Master Tasks: Parses task/stream/urgency/due_date/energy/notes, creates page in Notion, falls back to pending_sync queue on failure.
+- [x] COMPLETE_TODO handler: Fuzzy search on task titles, presents top match with inline confirm/cancel buttons (callback_query), marks task Done on confirmation.
+- [x] LIST_TODOS handler: Filters (today/inbox/waiting/upcoming/all), grouped by urgency with emoji indicators. /today and /inbox commands bypass Claude.
+- [x] UPDATE_TODO handler: Fuzzy search + field updates (due_date, urgency, status, stream, energy, notes). Notes always appended, never overwritten (GET before PATCH).
+- [x] Router (src/bot1/router.js): Full intent routing — text → classifyIntent → switch/case dispatch. Callback query routing for complete:* buttons. UNKNOWN fallback with conversational Haiku reply.
+- [x] Notion CRUD (src/bot1/todo/notion.js): createTask, queryTasks (5 filter modes), searchTasks (fuzzy scoring), updateTask (with notes append), completeTask. All wrapped in withRetry().
+- [x] queryDatabase helper (src/utils/notion.js): Raw REST API call for database queries — workaround for @notionhq/client v5.x removing databases.query().
+- [x] Dev startup robustness (src/index.js): Bryan added startBotWithRetry (409 conflict retry), deleteWebhook before polling, drop_pending_updates.
+- [x] Integration tested from Telegram: ADD_TODO, COMPLETE_TODO, LIST_TODOS (/today, /inbox), UPDATE_TODO — all confirmed working. Tasks appear correctly in Notion Master Tasks database.
+
+**Next Up (Phase 3 — Quick Notes Module):**
+- [ ] Draft buffer state machine (SQLite persistence)
+- [ ] 5s silence → static draft preview with Save/Discard inline buttons
+- [ ] Intent shift detection (continues_draft vs new intent)
+- [ ] Save: Claude generates title + type + stream → Notion Quick Notes DB
+- [ ] SET_REMINDER intent → unified scheduler
+- [ ] LIST_NOTES intent (filter by type, stream, date)
+- [ ] PROMOTE_TO_TASK intent (Note → Master Tasks, mark Promoted)
+
+**Not needed yet:**
+- Google OAuth credentials (Phase 5/6)
+- OpenAI API key for Whisper (deferred voice notes)
+- VPS deployment — still testing locally
 
 ---
 
@@ -73,7 +104,7 @@
 |---|---|---|
 | 0. Planning | ✅ Complete | Specs, audit, decisions, docs |
 | 1. Foundation | ✅ Complete | Project setup, webhook, SQLite, Notion DBs, auth |
-| 2. Todo Module | ⬜ Not started | ADD/COMPLETE/LIST/UPDATE_TODO, stream routing, Notion |
+| 2. Todo Module | ✅ Complete | ADD/COMPLETE/LIST/UPDATE_TODO, stream routing, Notion |
 | 3. Quick Notes Module | ⬜ Not started | Buffer, save/discard, intent shift, reminders, promote (no voice) |
 | 4. Scheduler & Briefings | ⬜ Not started | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
 | 5. File Handling | ⬜ Not started | Drive upload, PDF conversion, ATTACH_FILE, task linking |

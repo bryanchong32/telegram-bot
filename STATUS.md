@@ -1,6 +1,40 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 5 — File Handling (COMPLETE)
+## Current Phase: Phase 6 — Bot 2: Receipts (COMPLETE)
+
+---
+
+### Session 7 — 2026-02-25 00:20 MYT (Phase 6: Bot 2 — Receipt Tracker)
+
+**Completed:**
+- [x] Google Drive folders reorganized: TaskRefs moved to Bryan's specified folder (1t5jYWLBo_...), receipts moved to external shared Drive folder (1G6dSyvG58-...). Folder IDs unchanged in .env.
+- [x] Claude Vision receipt extraction (src/bot2/vision.js): Haiku-powered structured extraction — merchant, date, amount, currency, category, items, tax, payment method. is_receipt validation rejects non-receipt images. Confidence scoring (0.0–1.0) prompts re-upload on blurry/unclear photos (<0.5 threshold).
+- [x] Google Drive receipt upload (src/bot2/drive.js): YYYY/MM subfolder organization under receipts/ folder (created on demand). Date-prefixed filenames (YYYY-MM-DD_Merchant_Amount.ext). "Anyone with link can view" sharing. supportsAllDrives for shared Drive compatibility.
+- [x] Google Sheets expense logging (src/bot2/sheets.js): Appends to Expense Log with 9 columns (Date, Merchant, Amount, Currency, Category, Receipt Link, Notes, Created At, Logged By). Returns row index for deletion. deleteExpenseRow() via batchUpdate.
+- [x] Natural language expense queries (src/bot2/queries.js): Haiku classifies query type → this_month, last_month, by_category, recent, search. Formatted summaries from Sheets data.
+- [x] Bot 2 router fully wired (src/bot2/router.js): Photo/document → Vision → validate → Drive → Sheets → confirmation with Delete button. Text → expense query. Commands: /summary, /categories, /recent, /help. Telegram menu commands registered via setMyCommands.
+- [x] vision() function added to src/utils/anthropic.js — base64 image + system prompt → Claude response. Used by Bot 2 for receipt extraction.
+- [x] Inline Delete button on confirmation message: receipt:delete callback → deletes from both Sheets (row) and Drive (file) in one tap.
+- [x] Logged By column: tracks Telegram user display name (first_name + last_name) on every expense row.
+- [x] Non-receipt rejection: random photos (keyboard, selfie, etc.) are detected and rejected with clear message.
+- [x] Low confidence handling: blurry/cut-off receipts prompt re-upload instead of logging bad data.
+- [x] Live tested from Telegram: receipt photo extracted, logged to Sheets with Logged By, uploaded to Drive, Delete button works. Non-receipt photo rejected.
+
+**Next Up (Phase 7 — Polish & Hardening):**
+- [ ] Error handling edge cases across both bots
+- [ ] Health check command — verify all integrations
+- [ ] Crash recovery audit (VPS restart survival)
+- [ ] Security audit (env vars, whitelist, logging)
+- [ ] VPS deployment (Nginx + webhook + PM2)
+
+**Pending Bryan's Action:**
+- Set up Notion Board view in Master Tasks database (manual)
+- Test file handling from Telegram (send a photo/PDF/doc with and without captions)
+
+**Known Issues / Blockers:**
+- LibreOffice must be installed on VPS for Office→PDF conversion
+- Voice notes (Whisper) deferred — no OpenAI API key needed yet
+- VPS deployment deferred until ready for production testing
 
 ---
 
@@ -210,5 +244,5 @@
 | 3. Quick Notes Module | ✅ Complete | Buffer, save/discard, intent shift, reminders, promote (no voice) |
 | 4. Scheduler & Briefings | ✅ Complete | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
 | 5. File Handling | ✅ Complete | Drive upload, PDF conversion, ATTACH_FILE, task linking |
-| 6. Bot 2 — Receipts | ⬜ Not started | Vision extraction, Sheets logging, Drive storage, queries |
+| 6. Bot 2 — Receipts | ✅ Complete | Vision extraction, Sheets logging, Drive storage, queries, delete, validation |
 | 7. Polish & Hardening | ⬜ Not started | Edge cases, crash recovery, health check, security audit |

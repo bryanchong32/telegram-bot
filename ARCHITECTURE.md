@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Telegram Bots
 
-**Last Updated:** 2026-02-24 22:50 MYT
+**Last Updated:** 2026-02-25 00:20 MYT
 
 ---
 
@@ -118,13 +118,22 @@ Incoming message
 User ID in whitelist? → No → silently ignore
     ↓ Yes
 Message type?
-    ├── Photo/PDF → Claude Vision (extract merchant, date, amount, category, currency)
-    │                 ↓
-    │         Append row to Google Sheets
-    │         Upload original to Google Drive /receipts/YYYY/MM/
-    │         Reply: "✅ Logged RM45 at Grab, 23 Feb, Transport"
+    ├── /command → Command handler (bypass Claude)
+    │     /summary, /categories, /recent, /help, /health
+    ├── Photo/PDF ↓
+    │     Download from Telegram
+    │         ↓
+    │     Claude Vision (Haiku) → extract data + is_receipt + confidence
+    │         ├── Not a receipt → reject: "This doesn't look like a receipt"
+    │         ├── Low confidence (<0.5) → "Receipt hard to read, try clearer photo"
+    │         └── Valid receipt ↓
+    │               Upload to Google Drive /receipts/YYYY/MM/
+    │               Append row to Google Sheets (with Logged By)
+    │               Reply: "Logged: MYR 45.50 at Grab" + [Delete] button
     │
-    └── Text → Expense query (Claude NLP)
+    ├── Callback: receipt:delete → Delete from Sheets + Drive
+    │
+    └── Text → Expense query (Haiku classification)
               ↓
         Query Google Sheets → format summary → reply
 ```
@@ -180,7 +189,8 @@ apt-get install libreoffice    # Office → PDF conversion (ATTACH_FILE)
 | Intent shift detection | Anthropic | Haiku | ~$0.0003/call |
 | File caption parsing | Anthropic | Haiku | ~$0.0003/call |
 | Note title/type/stream generation | Anthropic | Sonnet | ~$0.003/call |
-| Receipt extraction | Anthropic | Sonnet (vision) | ~$0.01/image |
+| Receipt extraction | Anthropic | Haiku (vision) | ~$0.003/image |
+| Expense query classification | Anthropic | Haiku | ~$0.0003/call |
 | Conversational reply (UNKNOWN) | Anthropic | Sonnet | ~$0.003/call |
 
 **Estimated monthly:** $2–5 under normal personal use.

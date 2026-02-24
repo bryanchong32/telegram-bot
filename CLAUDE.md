@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 23:35 MYT | Updated By: Claude Code (Session 6)
+# Last Updated: 2026-02-25 00:20 MYT | Updated By: Claude Code (Session 7)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 5 Complete — tested and verified, ready for Phase 6 (Bot 2: Receipts)
-**Last Updated:** 2026-02-24 23:35 MYT
+**Phase:** Phase 6 Complete — Bot 2 Receipt Tracker built and tested, ready for Phase 7 (Polish & Hardening)
+**Last Updated:** 2026-02-25 00:20 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -269,16 +269,16 @@ Then summarise to Bryan:
 - 2026-02-24 15:00 — Phase 4 Scheduler & Briefings complete: scheduler executes 4 job types (briefing/review/reminder/recurring), daily briefing composer (08:00 MYT), weekly review composer (Sun 20:00 MYT), reminder Done/Snooze buttons, recurring task → Notion, cron-parser for rescheduling, missed-trigger detection on startup, seed script. SQLite seeded with default jobs.
 - 2026-02-24 16:00 — GCP setup complete: Google Cloud project created, Drive + Sheets APIs enabled, OAuth 2.0 credentials obtained via OAuth Playground, connection verified (bryanchong32@gmail.com). googleapis package installed.
 - 2026-02-24 22:50 — Phase 5 File Handling complete: Google Drive folders created (TaskRefs + 5 stream subfolders + receipts), Sheets expense log created, Google auth helper (utils/google.js), Drive upload module (date-prefix, sharing, retry), Office→PDF conversion (LibreOffice headless, graceful fallback), ATTACH_FILE handler (download→convert→upload→link, Haiku caption parsing), Notion File Links appender (GET→append→PATCH), router + intent engine updated. Startup verified clean.
+- 2026-02-25 00:20 — Phase 6 Bot 2 Receipt Tracker complete: Claude Vision extraction (Haiku, is_receipt + confidence validation), Drive upload (YYYY/MM subfolders), Sheets logging (9 columns incl. Logged By), expense queries (Haiku NLP → Sheets), inline Delete button, non-receipt rejection, low-confidence re-upload prompt. Drive folders reorganized to Bryan's specified locations. Live tested from Telegram.
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 6: Bot 2 — Receipts (Claude Vision extraction, Sheets logging, Drive storage, expense queries)
+- Phase 7: Polish & Hardening (error handling, crash recovery, health check, security audit, VPS deployment)
 
 **Pending Bryan's Action:**
 - Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
-- Test file handling from Telegram (send a photo/PDF/doc with and without captions)
 
 **Known Issues / Blockers:**
 - LibreOffice must be installed on VPS for Office→PDF conversion (`apt-get install libreoffice`). Not available locally on Windows — conversion will gracefully fall back to uploading originals until VPS deployment.
@@ -293,6 +293,10 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-25 00:20 | Skip sharp image enhancement | Add sharp for scanner-like look | Claude Vision reads raw images — enhancement is cosmetic only. Zero OCR benefit, adds native-binding dependency. Bryan approved skipping. | N/A |
+| 2026-02-25 00:20 | Haiku for receipt Vision extraction | Sonnet (vision) | Structured extraction, not complex reasoning. ~3x cheaper. Confidence scoring catches quality issues. | Low |
+| 2026-02-25 00:20 | YYYY/MM subfolder organization for receipts | Flat folder with date prefix | Per spec. Better long-term organization. Folders created on demand. | Low |
+| 2026-02-25 00:20 | Inline Delete button on confirmation | /delete command | Button tap is instant UX — carries driveFileId + sheetRow. One tap deletes from both Sheets and Drive. | Low |
 | 2026-02-24 22:50 | Dedicated Haiku call for file caption parsing | Reuse full intent engine | File messages bypass the text intent engine — caption only needs stream + task link extraction. Focused prompt is cheaper and more reliable. Falls back to keyword inference on failure. | Low |
 | 2026-02-24 22:50 | Dynamic stream folder discovery via Drive API | Hardcode subfolder IDs in .env | Listing TaskRefs/ subfolders on first use and caching is more resilient than 5 hardcoded IDs. One extra API call on startup, then zero overhead. | Low |
 | 2026-02-24 22:50 | Separate notionFiles.js for File Links | Extend todo/notion.js | File Links handling is file-module-specific. Keeping it in files/ folder maintains clean separation. todo/notion.js stays focused on task CRUD. | Low |

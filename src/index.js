@@ -11,9 +11,9 @@ const config = require('./shared/config');
 const { initTables } = require('./shared/db');
 const { bot1 } = require('./bot1/bot');
 const { bot2 } = require('./bot2/bot');
-const { startScheduler, stopScheduler } = require('./shared/scheduler');
+const { startScheduler, stopScheduler, checkMissedTriggers } = require('./shared/scheduler');
 const { startPendingSyncWorker, stopPendingSyncWorker } = require('./shared/pendingSync');
-const { runHealthChecks, formatHealthMessage } = require('./utils/health');
+const { runHealthChecks } = require('./utils/health');
 const { restoreOpenDrafts, clearAllState } = require('./bot1/notes/buffer');
 const logger = require('./utils/logger');
 
@@ -44,21 +44,11 @@ async function main() {
   /* 1. Initialise SQLite tables */
   initTables();
 
-  /* 2. Register /health command on both bots (needs db to be ready) */
-  bot1.command('health', async (ctx) => {
-    await ctx.reply('Running health checks...');
-    const results = await runHealthChecks();
-    await ctx.reply(formatHealthMessage(results));
-  });
-
-  bot2.command('health', async (ctx) => {
-    await ctx.reply('Running health checks...');
-    const results = await runHealthChecks();
-    await ctx.reply(formatHealthMessage(results));
-  });
-
-  /* 3. Create Express app for HTTP health endpoint (always available) */
+  /* 2. Create Express app for HTTP health endpoint (always available) */
   const app = express();
+
+  /* Parse JSON request bodies — required for Telegram webhook payloads */
+  app.use(express.json());
 
   /* HTTP health endpoint — for external monitoring / Nginx checks */
   app.get('/health', async (req, res) => {
@@ -72,16 +62,19 @@ async function main() {
     res.json({ service: 'telegram-bots', status: 'running' });
   });
 
-  /* 4. Start background workers */
-  startScheduler();
-  startPendingSyncWorker();
+  /* 4. Start background workers — pass bot1 so scheduler can send Telegram messages.
+     Pending sync worker gets bot1 + chatId so it can notify Bryan on max retries. */
+  startScheduler(bot1);
+  startPendingSyncWorker(bot1, config.ALLOWED_TELEGRAM_USER_ID);
 
   /* 5. Start bots — webhook mode (production) or long polling (development) */
   if (config.NODE_ENV === 'production') {
     /* Production: Register webhook routes on Express, then start the server.
-       Webhook URLs are set via the deployment script after Nginx is configured. */
+       Webhook URLs are set via the deployment script after Nginx is configured.
+       Bot 2 timeout raised to 60s — receipt processing (Vision + Drive + Sheets)
+       takes 15-30s. Default 10s causes Telegram to retry, creating duplicates. */
     app.post('/webhook/bot1', webhookCallback(bot1, 'express'));
-    app.post('/webhook/bot2', webhookCallback(bot2, 'express'));
+    app.post('/webhook/bot2', webhookCallback(bot2, 'express', 'return', 60000));
     logger.info('Production mode — webhook routes registered');
   } else {
     /* Development: Use long polling (no webhook needed, works without a public URL).
@@ -105,14 +98,28 @@ async function main() {
     logger.error('Draft restoration failed', { error: err.message });
   });
 
+  /* 5c. Check for missed scheduler triggers from the last 24hrs (VPS restart safety) */
+  checkMissedTriggers(bot1).catch((err) => {
+    logger.error('Missed trigger check failed', { error: err.message });
+  });
+
   /* 6. Start Express server (always, for health endpoint + webhooks in production) */
   const server = app.listen(config.PORT, () => {
     logger.info(`Express server listening on port ${config.PORT}`);
   });
 
-  /* 7. Graceful shutdown handler */
+  /* 7. Graceful shutdown handler with 10s timeout.
+     If graceful shutdown hangs (e.g. webhook request in-flight), force exit. */
   const shutdown = async (signal) => {
     logger.info(`Received ${signal} — shutting down gracefully`);
+
+    /* Force exit after 10s if graceful shutdown hangs */
+    const forceTimer = setTimeout(() => {
+      logger.error('Graceful shutdown timed out after 10s — forcing exit');
+      process.exit(1);
+    }, 10000);
+    forceTimer.unref(); /* Don't keep process alive just for this timer */
+
     clearAllState();
     stopScheduler();
     stopPendingSyncWorker();
@@ -129,6 +136,25 @@ async function main() {
 
   logger.info('All systems initialised');
 }
+
+/* ─── Process-level error handlers ─── */
+
+/* Catch unhandled promise rejections — log and survive (don't crash).
+   PM2 will restart on crash anyway, but a single failed async operation
+   shouldn't kill both bots. Log the error for debugging. */
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? reason.stack : undefined;
+  logger.error('Unhandled promise rejection', { error: msg, stack });
+});
+
+/* Catch uncaught exceptions — log and exit so PM2 can restart cleanly.
+   Unlike rejections, a sync exception means the process is in an unknown
+   state. Log and exit is the safest recovery path. */
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception — exiting', { error: err.message, stack: err.stack });
+  process.exit(1);
+});
 
 /* Run the main function and catch any startup errors */
 main().catch((err) => {

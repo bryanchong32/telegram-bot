@@ -2,17 +2,14 @@
  * One-time script: Sets the Telegram webhook URLs for both bots.
  * Run this AFTER Nginx + SSL are configured on the VPS.
  *
- * Usage: WEBHOOK_DOMAIN=yourdomain.duckdns.org node scripts/set-webhooks.js
+ * Default domain: ecomwave.duckdns.org (same as CRM — SSL already configured).
+ * Override: WEBHOOK_DOMAIN=custom.domain.com node scripts/set-webhooks.js
  */
 
 require('dotenv').config();
 
-const DOMAIN = process.env.WEBHOOK_DOMAIN;
-if (!DOMAIN) {
-  console.error('❌ Set WEBHOOK_DOMAIN environment variable first.');
-  console.error('   Example: WEBHOOK_DOMAIN=yourdomain.duckdns.org node scripts/set-webhooks.js');
-  process.exit(1);
-}
+const DOMAIN = process.env.WEBHOOK_DOMAIN || 'ecomwave.duckdns.org';
+console.log(`Using domain: ${DOMAIN}`);
 
 const BOT1_TOKEN = process.env.TELEGRAM_BOT1_TOKEN;
 const BOT2_TOKEN = process.env.TELEGRAM_BOT2_TOKEN;

@@ -191,6 +191,7 @@ async function classifyIntent(text) {
     /* Validate that we got a recognised intent */
     const validIntents = [
       'ADD_TODO', 'COMPLETE_TODO', 'LIST_TODOS', 'UPDATE_TODO',
+      'ATTACH_FILE',
       'ADD_NOTE', 'SET_REMINDER', 'LIST_NOTES', 'PROMOTE_TO_TASK',
       'UNKNOWN',
     ];

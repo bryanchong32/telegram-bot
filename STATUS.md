@@ -1,6 +1,140 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 3 — Quick Notes Module (COMPLETE)
+## Current Phase: Phase 7 — Polish & Hardening (COMPLETE)
+
+---
+
+### Session 8 — 2026-02-25 01:00 MYT (Phase 7: Polish & Hardening)
+
+**Completed:**
+- [x] Pending sync worker fully implemented (src/shared/pendingSync.js): retries create_task and create_note actions every 5 minutes. upload_file gracefully resolved (temp file lost on restart, cannot retry). Notifies Bryan via Telegram after 5th failure. Unknown actions cleared from queue.
+- [x] Scheduler reschedule-on-failure fix (src/shared/scheduler.js): recurring jobs now ALWAYS reschedule to next cron time, even on execution failure. Previously, a failed recurring job's next_run_at stayed in the past, causing a 60-second retry loop until the external service recovered.
+- [x] Process-level error handlers (src/index.js): unhandledRejection → log and continue (don't crash both bots for one failed promise). uncaughtException → log and exit (PM2 auto-restarts).
+- [x] Graceful shutdown timeout (src/index.js): 10-second timeout on SIGTERM/SIGINT — forces exit if bot.stop() or server.close() hang.
+- [x] Callback query error handling (src/bot1/router.js): entire callback_query handler wrapped in try/catch. Reminder Done/Snooze, draft Save/Discard, and task Complete callbacks all protected.
+- [x] Health check enhanced (src/utils/health.js): added Google Drive API check (OAuth token validity), Google Sheets check (reads 1 cell from Expense Log), scheduler status (active job count + next trigger time), pending sync queue with failed count. Skips Google checks gracefully when credentials aren't configured.
+- [x] Config hardened (src/shared/config.js): Google credentials + Notion DB IDs now required in production. Falls back to optional in development so todo/notes testing still works without Google setup. requiredInProd() helper.
+- [x] PM2 config fixed (ecosystem.config.js): removed redundant --env-file=.env flag (dotenv already loads it in config.js). PM2 env block still provides NODE_ENV/PORT/TZ overrides.
+- [x] Nginx config finalized (nginx/telegram-bots.conf): updated to add location blocks to existing ecomwave.duckdns.org server block (shares SSL cert). Separate domain not needed.
+- [x] Webhook script updated (scripts/set-webhooks.js): defaults to ecomwave.duckdns.org. WEBHOOK_DOMAIN override still supported.
+- [x] Deployment guide created (DEPLOY.md): step-by-step VPS deployment instructions covering code upload, .env setup, npm install, Nginx config, PM2 start, webhook registration, verification, and troubleshooting.
+- [x] All 27 modules load cleanly. Full startup verified — both bots polling, scheduler running, pending sync worker active.
+
+**Pending Bryan's Action:**
+- Deploy to VPS following DEPLOY.md
+- Set up Notion Board view in Master Tasks database (manual)
+- Install LibreOffice on VPS: `apt-get install libreoffice`
+
+**Known Issues:**
+- punycode deprecation warning from Node.js 22+ — harmless, upstream dependency issue
+- Voice notes (Whisper) deferred to Phase 2 — no OpenAI API key needed yet
+
+---
+
+### Session 7 — 2026-02-25 00:20 MYT (Phase 6: Bot 2 — Receipt Tracker)
+
+**Completed:**
+- [x] Google Drive folders reorganized: TaskRefs moved to Bryan's specified folder (1t5jYWLBo_...), receipts moved to external shared Drive folder (1G6dSyvG58-...). Folder IDs unchanged in .env.
+- [x] Claude Vision receipt extraction (src/bot2/vision.js): Haiku-powered structured extraction — merchant, date, amount, currency, category, items, tax, payment method. is_receipt validation rejects non-receipt images. Confidence scoring (0.0–1.0) prompts re-upload on blurry/unclear photos (<0.5 threshold).
+- [x] Google Drive receipt upload (src/bot2/drive.js): YYYY/MM subfolder organization under receipts/ folder (created on demand). Date-prefixed filenames (YYYY-MM-DD_Merchant_Amount.ext). "Anyone with link can view" sharing. supportsAllDrives for shared Drive compatibility.
+- [x] Google Sheets expense logging (src/bot2/sheets.js): Appends to Expense Log with 9 columns (Date, Merchant, Amount, Currency, Category, Receipt Link, Notes, Created At, Logged By). Returns row index for deletion. deleteExpenseRow() via batchUpdate.
+- [x] Natural language expense queries (src/bot2/queries.js): Haiku classifies query type → this_month, last_month, by_category, recent, search. Formatted summaries from Sheets data.
+- [x] Bot 2 router fully wired (src/bot2/router.js): Photo/document → Vision → validate → Drive → Sheets → confirmation with Delete button. Text → expense query. Commands: /summary, /categories, /recent, /help. Telegram menu commands registered via setMyCommands.
+- [x] vision() function added to src/utils/anthropic.js — base64 image + system prompt → Claude response. Used by Bot 2 for receipt extraction.
+- [x] Inline Delete button on confirmation message: receipt:delete callback → deletes from both Sheets (row) and Drive (file) in one tap.
+- [x] Logged By column: tracks Telegram user display name (first_name + last_name) on every expense row.
+- [x] Non-receipt rejection: random photos (keyboard, selfie, etc.) are detected and rejected with clear message.
+- [x] Low confidence handling: blurry/cut-off receipts prompt re-upload instead of logging bad data.
+- [x] Live tested from Telegram: receipt photo extracted, logged to Sheets with Logged By, uploaded to Drive, Delete button works. Non-receipt photo rejected.
+
+**Next Up (Phase 7 — Polish & Hardening):**
+- [ ] Error handling edge cases across both bots
+- [ ] Health check command — verify all integrations
+- [ ] Crash recovery audit (VPS restart survival)
+- [ ] Security audit (env vars, whitelist, logging)
+- [ ] VPS deployment (Nginx + webhook + PM2)
+
+**Pending Bryan's Action:**
+- Set up Notion Board view in Master Tasks database (manual)
+- Test file handling from Telegram (send a photo/PDF/doc with and without captions)
+
+**Known Issues / Blockers:**
+- LibreOffice must be installed on VPS for Office→PDF conversion
+- Voice notes (Whisper) deferred — no OpenAI API key needed yet
+- VPS deployment deferred until ready for production testing
+
+---
+
+### Session 6 — 2026-02-24 23:35 MYT (Phase 5: File Handling)
+
+**Completed:**
+- [x] Google Drive folder structure created programmatically (scripts/setup-google.js): TaskRefs/ root + 5 stream subfolders (Minionions, KLN, Overdrive, Personal, Property) + receipts/ folder (Bot 2).
+- [x] Google Sheets "Expense Log" spreadsheet created with headers (Bot 2, Phase 6).
+- [x] Environment variables set: GDRIVE_TASK_REFS_FOLDER_ID, GDRIVE_RECEIPTS_FOLDER_ID, GSHEETS_EXPENSE_LOG_ID.
+- [x] Google API auth helper (src/utils/google.js): OAuth2 client with auto-refresh, authenticated Drive v3 + Sheets v4 clients, withGoogleRetry() for exponential backoff.
+- [x] Google Drive upload module (src/bot1/files/drive.js): auto-discovers stream subfolders, date-prefixed filenames (YYYY-MM-DD_name), "anyone with link can view" sharing, retry on 429/5xx.
+- [x] Office → PDF conversion (src/bot1/files/convert.js): LibreOffice headless, 30s timeout, graceful fallback to original file on failure.
+- [x] ATTACH_FILE handler (src/bot1/files/handlers.js): downloads from Telegram, converts if Office doc, uploads to Drive, parses caption via Haiku for stream + task link hints, links to existing task (fuzzy search) or creates new Inbox task, temp file cleanup.
+- [x] Notion File Links appender (src/bot1/files/notionFiles.js): GET→append→PATCH (never overwrites), clickable rich_text links, 2000-char limit safety, sequential processing.
+- [x] Intent engine updated: ATTACH_FILE added to validIntents.
+- [x] Router updated: Phase 5 placeholder replaced with file handler, ATTACH_FILE text-only case handled (prompts user to send actual file), help text updated with FILES section.
+- [x] Startup verified: clean boot, all modules load, no regressions on Phase 1–4 features.
+- [x] Bug fix: Telegram file download — grammY's getFile() doesn't have .download() method. Fixed to construct download URL and use native fetch(). Tested with DOCX file.
+- [x] Live test passed: Bryan sent "EXECUTIVE SUMMARY- KL North.docx" with caption → Haiku detected KLN stream + task link → uploaded to Drive → linked to existing Notion task. PDF conversion gracefully skipped (no LibreOffice on Windows).
+
+**Next Up (Phase 6 — Bot 2: Receipts):**
+- [ ] Claude Vision receipt extraction (src/bot2/vision.js)
+- [ ] Google Sheets expense logging (src/bot2/sheets.js)
+- [ ] Google Drive receipt image upload (src/bot2/drive.js) — uses receipts/ folder
+- [ ] Bot 2 router: photo → Vision → Sheets + Drive, text → expense query
+- [ ] Expense query handlers (this month, by category, etc.)
+
+**Not needed yet:**
+- OpenAI API key for Whisper (deferred voice notes)
+- VPS deployment — still testing locally
+
+---
+
+### Session 5 — 2026-02-24 16:00 MYT (Phase 5 Prep: GCP Setup)
+
+**Completed:**
+- [x] Google Cloud Platform setup: project created, Drive API + Sheets API enabled, OAuth consent screen configured.
+- [x] OAuth 2.0 credentials obtained: Client ID, Client Secret, and Refresh Token via Google OAuth Playground.
+- [x] Scopes: `https://www.googleapis.com/auth/drive.file` (Drive) + `https://www.googleapis.com/auth/spreadsheets` (Sheets).
+- [x] Credentials added to .env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN.
+- [x] googleapis npm package installed (Google Drive v3 + Sheets v4 APIs).
+- [x] Connection verified: Drive API test passed — authenticated as bryanchong32@gmail.com.
+
+---
+
+### Session 4 — 2026-02-24 15:00 MYT (Phase 4: Scheduler & Briefings)
+
+**Completed:**
+- [x] Scheduler worker fully implemented (src/shared/scheduler.js): executes 4 job types — briefing, review, reminder, recurring. Processes due jobs every 60s from scheduled_jobs table.
+- [x] Daily briefing composer (src/bot1/briefing/daily.js): queries today's tasks (grouped by urgency), inbox count, and today's reminders. Formats morning briefing message. Calendar placeholder for Phase 2.
+- [x] Weekly review composer (src/bot1/briefing/weekly.js): queries waiting items (with age in days), tasks completed this week (via last_edited_time proxy), and upcoming 7-day tasks. Formats Sunday review message.
+- [x] Reminder delivery: fires one-shot reminders with inline Done/Snooze buttons (reminder:done:{id}, reminder:snooze:{id}). Done deactivates job, Snooze reschedules +1hr.
+- [x] Recurring task creation: creates Notion Master Task with pre-filled fields on cron trigger, notifies Bryan via Telegram.
+- [x] Cron-based rescheduling: recurring jobs auto-calculate next_run_at via cron-parser. One-shot reminders deactivated after firing.
+- [x] Missed-trigger detection (checkMissedTriggers): on startup, finds active jobs whose next_run_at fell in the last 24hrs and re-executes them. Handles VPS restarts.
+- [x] Router updated (src/bot1/router.js): reminder:done and reminder:snooze callback handlers. Replaces Phase 4 placeholder.
+- [x] Entry point updated (src/index.js): passes bot1 reference to scheduler, added checkMissedTriggers on startup.
+- [x] Date helpers updated (src/utils/dates.js): nextCronRun() (cron expression → next ISO datetime), startOfDayMYT() helper.
+- [x] New dependency: cron-parser — calculates next occurrence from cron expressions with MYT timezone.
+- [x] Seed script (scripts/seed-scheduler.js): idempotent seeder for default jobs. Creates daily briefing (0 8 * * *) and weekly review (0 20 * * 0).
+- [x] SQLite seeded: daily briefing (next: 2026-02-25 08:00 MYT), weekly review (next: 2026-03-01 Sun 20:00 MYT).
+- [x] Startup verified: clean boot, all modules load, scheduler starts, missed-trigger check passes, no regressions.
+
+**Next Up (Phase 5 — File Handling):**
+- [ ] Google OAuth setup (Drive + Sheets credentials)
+- [ ] Google Drive upload module (src/bot1/files/drive.js)
+- [ ] Office → PDF conversion via LibreOffice (src/bot1/files/convert.js)
+- [ ] ATTACH_FILE intent handler (src/bot1/files/handlers.js)
+- [ ] File linking to Notion Master Tasks (File Links property)
+
+**Not needed yet:**
+- OpenAI API key for Whisper (deferred voice notes)
+- VPS deployment — still testing locally
 
 ---
 
@@ -134,8 +268,8 @@
 | 0. Planning | ✅ Complete | Specs, audit, decisions, docs |
 | 1. Foundation | ✅ Complete | Project setup, webhook, SQLite, Notion DBs, auth |
 | 2. Todo Module | ✅ Complete | ADD/COMPLETE/LIST/UPDATE_TODO, stream routing, Notion |
-| 3. Quick Notes Module | ⬜ Not started | Buffer, save/discard, intent shift, reminders, promote (no voice) |
-| 4. Scheduler & Briefings | ⬜ Not started | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
-| 5. File Handling | ⬜ Not started | Drive upload, PDF conversion, ATTACH_FILE, task linking |
-| 6. Bot 2 — Receipts | ⬜ Not started | Vision extraction, Sheets logging, Drive storage, queries |
-| 7. Polish & Hardening | ⬜ Not started | Edge cases, crash recovery, health check, security audit |
+| 3. Quick Notes Module | ✅ Complete | Buffer, save/discard, intent shift, reminders, promote (no voice) |
+| 4. Scheduler & Briefings | ✅ Complete | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
+| 5. File Handling | ✅ Complete | Drive upload, PDF conversion, ATTACH_FILE, task linking |
+| 6. Bot 2 — Receipts | ✅ Complete | Vision extraction, Sheets logging, Drive storage, queries, delete, validation |
+| 7. Polish & Hardening | ✅ Complete | Pending sync retry, scheduler fix, error handlers, health check, deployment guide |

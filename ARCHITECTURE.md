@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Telegram Bots
 
-**Last Updated:** 2026-02-24 14:00 MYT
+**Last Updated:** 2026-02-25 01:00 MYT
 
 ---
 
@@ -51,9 +51,9 @@ Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min
 | PM2 process name | telegram-bots |
 | Internal port | 3003 |
 | PM2 user | deploy (NEVER run PM2 as root — shared VPS with ECOMWAVE CRM) |
-| Nginx config | /etc/nginx/sites-enabled/telegram-bots |
-| Webhook URL (Bot 1) | https://{domain}/webhook/bot1 |
-| Webhook URL (Bot 2) | https://{domain}/webhook/bot2 |
+| Nginx config | Location blocks in /etc/nginx/sites-available/ecomwave |
+| Webhook URL (Bot 1) | https://ecomwave.duckdns.org/webhook/bot1 |
+| Webhook URL (Bot 2) | https://ecomwave.duckdns.org/webhook/bot2 |
 | SSL | Let's Encrypt (auto-renew) |
 | SQLite DB | /home/deploy/telegram-bots/data/bot.db |
 | Timezone | Asia/Kuala_Lumpur (UTC+8) |
@@ -66,7 +66,7 @@ Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min
 | ECOMWAVE CRM (staging) | 3002 | ecomwave-crm-staging |
 | Telegram Bots | 3003 | telegram-bots |
 
-**Note:** Domain TBD — options: DuckDNS subdomain (free, instant) or purchased domain. Webhook doesn't need a pretty URL since only Telegram servers hit it.
+**Note:** Webhooks use the existing ecomwave.duckdns.org domain (already has SSL). Location blocks added to the same Nginx config — no separate domain needed. Only Telegram servers hit these URLs.
 
 ---
 
@@ -118,13 +118,22 @@ Incoming message
 User ID in whitelist? → No → silently ignore
     ↓ Yes
 Message type?
-    ├── Photo/PDF → Claude Vision (extract merchant, date, amount, category, currency)
-    │                 ↓
-    │         Append row to Google Sheets
-    │         Upload original to Google Drive /receipts/YYYY/MM/
-    │         Reply: "✅ Logged RM45 at Grab, 23 Feb, Transport"
+    ├── /command → Command handler (bypass Claude)
+    │     /summary, /categories, /recent, /help, /health
+    ├── Photo/PDF ↓
+    │     Download from Telegram
+    │         ↓
+    │     Claude Vision (Haiku) → extract data + is_receipt + confidence
+    │         ├── Not a receipt → reject: "This doesn't look like a receipt"
+    │         ├── Low confidence (<0.5) → "Receipt hard to read, try clearer photo"
+    │         └── Valid receipt ↓
+    │               Upload to Google Drive /receipts/YYYY/MM/
+    │               Append row to Google Sheets (with Logged By)
+    │               Reply: "Logged: MYR 45.50 at Grab" + [Delete] button
     │
-    └── Text → Expense query (Claude NLP)
+    ├── Callback: receipt:delete → Delete from Sheets + Drive
+    │
+    └── Text → Expense query (Haiku classification)
               ↓
         Query Google Sheets → format summary → reply
 ```
@@ -138,11 +147,11 @@ Message type?
 | `src/bot1/` | Bot 1 — Personal Assistant (router, intent engine, modules) |
 | `src/bot1/todo/` | Todo module — handlers + Notion queries |
 | `src/bot1/notes/` | Quick Notes module — buffer, handlers, Notion queries |
-| `src/bot1/files/` | File handling — Drive upload, PDF conversion |
+| `src/bot1/files/` | File handling — Drive upload, PDF conversion, Notion file links, ATTACH_FILE handler |
 | `src/bot1/briefing/` | Daily briefing + weekly review composers |
 | `src/bot2/` | Bot 2 — Receipt Tracker (router, vision, sheets, drive) |
 | `src/shared/` | Shared infra — SQLite, scheduler, auth, config |
-| `src/utils/` | Helpers — Notion API, Anthropic API, dates, logging |
+| `src/utils/` | Helpers — Notion API, Anthropic API, Google API, dates, logging |
 | `docs/` | Original spec documents |
 | `data/` | SQLite database file (gitignored) |
 
@@ -152,11 +161,12 @@ Message type?
 
 | Package | Purpose | Why Not Native |
 |---|---|---|
-| grammy (or node-telegram-bot-api) | Telegram Bot API wrapper | Handles webhook setup, message parsing, inline keyboards, callback queries. Decision TBD in Phase 1. |
+| grammy | Telegram Bot API wrapper | Handles webhook setup, message parsing, inline keyboards, callback queries. Chosen over node-telegram-bot-api for modern JS support. |
 | @notionhq/client | Notion API client | Official SDK with typed methods, rate limit handling. |
 | better-sqlite3 | SQLite for Node.js | Synchronous API is simpler for draft buffer (no async race conditions). Faster than node-sqlite3. |
 | node-cron | Cron-style scheduler | Triggers the scheduler worker check every 60 seconds. Lightweight. |
-| googleapis | Google Drive + Sheets APIs | Official SDK. Single package covers Drive + Sheets + Calendar (Phase 2). Needed from Phase 5 onwards. |
+| cron-parser | Cron expression → next occurrence | Calculates next_run_at from cron_expr for rescheduling recurring jobs. node-cron doesn't expose this. Added Phase 4. |
+| googleapis | Google Drive + Sheets APIs | Official SDK. Single package covers Drive + Sheets + Calendar (Phase 2). Installed Phase 5 prep. OAuth verified (bryanchong32@gmail.com). |
 | @anthropic-ai/sdk | Anthropic API client | Intent classification, title generation, vision (receipts). Already used across projects. |
 
 **Phase 2 additions (not yet):**
@@ -177,8 +187,10 @@ apt-get install libreoffice    # Office → PDF conversion (ATTACH_FILE)
 |---|---|---|---|
 | Intent classification | Anthropic | Haiku | ~$0.0003/call |
 | Intent shift detection | Anthropic | Haiku | ~$0.0003/call |
+| File caption parsing | Anthropic | Haiku | ~$0.0003/call |
 | Note title/type/stream generation | Anthropic | Sonnet | ~$0.003/call |
-| Receipt extraction | Anthropic | Sonnet (vision) | ~$0.01/image |
+| Receipt extraction | Anthropic | Haiku (vision) | ~$0.003/image |
+| Expense query classification | Anthropic | Haiku | ~$0.0003/call |
 | Conversational reply (UNKNOWN) | Anthropic | Sonnet | ~$0.003/call |
 
 **Estimated monthly:** $2–5 under normal personal use.
@@ -199,3 +211,7 @@ apt-get install libreoffice    # Office → PDF conversion (ATTACH_FILE)
 | Draft lost on VPS restart | SQLite persistence | Reload from draft_buffer on startup | "📝 Recovered unsaved draft — tap to review" |
 | Scheduler missed triggers | last_triggered check on startup | Re-run missed from last 24hrs | "📋 Missed recurring task created: {name}" |
 | pending_sync 5th failure | retry_count = 5 | Stop retrying | Notify Bryan via Telegram |
+| Scheduler job execution fails | try/catch per job | Always reschedule (prevent retry loop) | Error logged |
+| Unhandled promise rejection | process.on('unhandledRejection') | Log and continue (don't crash) | Error in PM2 logs |
+| Uncaught exception | process.on('uncaughtException') | Log and exit → PM2 auto-restarts | Error in PM2 logs |
+| Graceful shutdown hangs | 10s timeout | Force process.exit(1) | PM2 auto-restarts |

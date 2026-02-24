@@ -5,11 +5,8 @@
  *
  * Phase 2: Routes text messages through the intent engine to todo handlers.
  * Phase 3: Adds draft buffer check before intent engine for notes.
- *   - If a draft is open and in PREVIEWING state, run intent shift detection.
- *   - If the draft is still in BUFFERING (within 5s), just append.
- *   - Routes ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK to notes handlers.
- *   - Handles draft:save and draft:discard callback queries.
- *   - Persistent reply keyboard for quick navigation (zero API cost).
+ * Phase 4: Adds reminder:done and reminder:snooze callback handlers.
+ * Phase 5: Adds file handling (photo/document → Drive upload + task linking).
  */
 
 const { Keyboard } = require('grammy');
@@ -30,6 +27,7 @@ const {
   handleDraftDiscard,
   autoSaveDraft,
 } = require('./notes/handlers');
+const { handleAttachFile } = require('./files/handlers');
 const {
   getDraft,
   appendToDraft,
@@ -39,7 +37,9 @@ const {
   isPreviewShown,
   getDraftContent,
 } = require('./notes/buffer');
+const { markReminderDone, snoozeReminder } = require('../shared/scheduler');
 const { chat } = require('../utils/anthropic');
+const { runHealthChecks, formatHealthMessage } = require('../utils/health');
 const logger = require('../utils/logger');
 
 /* Store bot reference for timer callbacks (set during registerRouter) */
@@ -73,7 +73,7 @@ function buildMainKeyboard() {
 /* ─── Help text ─── */
 
 const HELP_TEXT =
-  '📖 What I Can Do\n\n' +
+  'What I Can Do\n\n' +
   'TASKS\n' +
   '• "add todo: submit KLN report by Friday"\n' +
   '• "done with invoice task"\n' +
@@ -87,12 +87,17 @@ const HELP_TEXT =
   'REMINDERS\n' +
   '• "remind me Friday 9am check lease renewal"\n' +
   '• /reminders to see active reminders\n\n' +
+  'FILES\n' +
+  '• Send any file (photo, PDF, doc) — uploaded to Google Drive\n' +
+  '• Add a caption to link it to a task: "for the KLN report"\n' +
+  '• No caption → creates a new Inbox task with the filename\n' +
+  '• Office docs (docx/xlsx/pptx) auto-convert to PDF\n\n' +
   'PROMOTE NOTE → TASK\n' +
   '• Save a note, then reply "promote"\n\n' +
   'TIPS\n' +
   '• Send multiple messages — I\'ll buffer them into one note\n' +
   '• Tap Save/Discard when the draft preview appears\n' +
-  '• Use the buttons below ↓ for quick access';
+  '• Use the buttons below for quick access';
 
 /**
  * Registers all command and message handlers on the bot instance.
@@ -151,8 +156,13 @@ function registerRouter(bot) {
     await ctx.reply(HELP_TEXT, { reply_markup: buildMainKeyboard() });
   });
 
-  /* /health — system health check (handler registered in index.js via healthCommand) */
-  /* Registered separately so health module can access db + Notion status */
+  /* /health — system health check */
+  bot.command('health', async (ctx) => {
+    logger.info('Bot 1 /health command', { chatId: ctx.chat.id });
+    await ctx.reply('Running health checks...');
+    const results = await runHealthChecks();
+    await ctx.reply(formatHealthMessage(results));
+  });
 
   /**
    * Text message handler — keyboard buttons → draft buffer → intent engine.
@@ -235,6 +245,15 @@ function registerRouter(bot) {
           await handleUpdateTodo(ctx, intent);
           break;
 
+        /* File intent — text-only ATTACH_FILE (no file attached).
+           Tell user to send the actual file. */
+        case 'ATTACH_FILE':
+          await ctx.reply(
+            'It sounds like you want to attach a file. ' +
+            'Send the file (photo, PDF, or document) and I\'ll upload it to Drive.'
+          );
+          break;
+
         /* Notes module intents */
         case 'ADD_NOTE':
           await handleAddNote(ctx, intent, botInstance);
@@ -272,31 +291,60 @@ function registerRouter(bot) {
     const data = ctx.callbackQuery.data;
     logger.info('Bot 1 callback query', { chatId: ctx.chat.id });
 
-    if (data.startsWith('complete:')) {
-      await handleCompleteCallback(ctx);
-      return;
-    }
+    try {
+      if (data.startsWith('complete:')) {
+        await handleCompleteCallback(ctx);
+        return;
+      }
 
-    if (data === 'draft:save') {
-      await handleDraftSave(ctx, botInstance);
-      return;
-    }
+      if (data === 'draft:save') {
+        await handleDraftSave(ctx, botInstance);
+        return;
+      }
 
-    if (data === 'draft:discard') {
-      await handleDraftDiscard(ctx);
-      return;
-    }
+      if (data === 'draft:discard') {
+        await handleDraftDiscard(ctx);
+        return;
+      }
 
-    /* Phase 4: reminder:done, reminder:snooze */
-    await ctx.answerCallbackQuery({ text: 'Not yet implemented' });
+      /* Reminder callbacks — Done marks complete, Snooze reschedules +1hr */
+      if (data.startsWith('reminder:done:')) {
+        const jobId = parseInt(data.split(':')[2], 10);
+        markReminderDone(jobId);
+        await ctx.answerCallbackQuery({ text: 'Reminder dismissed' });
+        await ctx.editMessageText(`✅ ${ctx.callbackQuery.message.text} — done`);
+        return;
+      }
+
+      if (data.startsWith('reminder:snooze:')) {
+        const jobId = parseInt(data.split(':')[2], 10);
+        snoozeReminder(jobId);
+        await ctx.answerCallbackQuery({ text: 'Snoozed for 1 hour' });
+        await ctx.editMessageText(`⏩ ${ctx.callbackQuery.message.text} — snoozed 1hr`);
+        return;
+      }
+
+      /* Unknown callback — shouldn't happen but handle gracefully */
+      await ctx.answerCallbackQuery({ text: 'Unknown action' });
+    } catch (err) {
+      logger.error('Callback query error', { error: err.message, data });
+      await ctx.answerCallbackQuery({ text: 'Something went wrong' }).catch(() => {});
+    }
   });
 
   /**
-   * File/photo/document handler — Phase 5: will route to ATTACH_FILE handler.
+   * File/photo/document handler — routes to ATTACH_FILE handler.
+   * Downloads from Telegram, converts if needed, uploads to Drive,
+   * and links to a task (existing or new Inbox task).
    */
   bot.on(['message:photo', 'message:document'], async (ctx) => {
     logger.info('Bot 1 file received', { chatId: ctx.chat.id });
-    await ctx.reply('File received. File handling coming in Phase 5.');
+    try {
+      await handleAttachFile(ctx);
+    } catch (err) {
+      logger.error('File handler error', { error: err.message, stack: err.stack });
+      await ctx.reply('Something went wrong processing your file. Please try again.');
+    }
   });
 }
 

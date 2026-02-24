@@ -13,7 +13,8 @@ module.exports = {
       name: 'telegram-bots',
       script: 'src/index.js',
       cwd: '/home/deploy/telegram-bots',
-      node_args: '--env-file=.env',
+      /* dotenv loads .env in config.js — no --env-file needed.
+         PM2 env vars below override NODE_ENV, PORT, TZ for production. */
       env: {
         NODE_ENV: 'production',
         PORT: 3003,

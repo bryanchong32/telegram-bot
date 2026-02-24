@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 14:00 MYT | Updated By: Claude Code (Session 3)
+# Last Updated: 2026-02-25 01:00 MYT | Updated By: Claude Code (Session 8)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 3 Complete — ready for Phase 4 (Scheduler & Briefings)
-**Last Updated:** 2026-02-24 14:00 MYT
+**Phase:** ALL 7 PHASES COMPLETE — Ready for VPS deployment
+**Last Updated:** 2026-02-25 01:00 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -266,20 +266,27 @@ Then summarise to Bryan:
 - 2026-02-24 12:15 — Phase 1 Foundation complete: scaffolding, all deps (latest), SQLite (3 tables), both bots running (grammY + Express), health check, Notion DBs created, PM2/Nginx configs, Git initialized on `dev` branch
 - 2026-02-24 13:00 — Phase 2 Todo Module complete: intent engine (Haiku), stream router, all 4 todo handlers (ADD/COMPLETE/LIST/UPDATE), Notion CRUD, queryDatabase helper, dev startup robustness (409 retry). All intents tested from Telegram.
 - 2026-02-24 14:00 — Phase 3 Quick Notes Module complete: draft buffer (SQLite, 5s timer, 1hr timeout, intent shift detection), notes handlers (ADD_NOTE, SET_REMINDER, LIST_NOTES, PROMOTE_TO_TASK), Notion Quick Notes CRUD, draft Save/Discard callbacks. UX: persistent reply keyboard (6 buttons), /help command, setMyCommands, /ideas + /reminders shortcuts. Tested from Telegram.
+- 2026-02-24 15:00 — Phase 4 Scheduler & Briefings complete: scheduler executes 4 job types (briefing/review/reminder/recurring), daily briefing composer (08:00 MYT), weekly review composer (Sun 20:00 MYT), reminder Done/Snooze buttons, recurring task → Notion, cron-parser for rescheduling, missed-trigger detection on startup, seed script. SQLite seeded with default jobs.
+- 2026-02-24 16:00 — GCP setup complete: Google Cloud project created, Drive + Sheets APIs enabled, OAuth 2.0 credentials obtained via OAuth Playground, connection verified (bryanchong32@gmail.com). googleapis package installed.
+- 2026-02-24 22:50 — Phase 5 File Handling complete: Google Drive folders created (TaskRefs + 5 stream subfolders + receipts), Sheets expense log created, Google auth helper (utils/google.js), Drive upload module (date-prefix, sharing, retry), Office→PDF conversion (LibreOffice headless, graceful fallback), ATTACH_FILE handler (download→convert→upload→link, Haiku caption parsing), Notion File Links appender (GET→append→PATCH), router + intent engine updated. Startup verified clean.
+- 2026-02-25 00:20 — Phase 6 Bot 2 Receipt Tracker complete: Claude Vision extraction (Haiku, is_receipt + confidence validation), Drive upload (YYYY/MM subfolders), Sheets logging (9 columns incl. Logged By), expense queries (Haiku NLP → Sheets), inline Delete button, non-receipt rejection, low-confidence re-upload prompt. Drive folders reorganized to Bryan's specified locations. Live tested from Telegram.
+- 2026-02-25 01:00 — Phase 7 Polish & Hardening complete: pending sync retry worker (create_task + create_note), scheduler reschedule-on-failure fix, process error handlers (unhandledRejection + uncaughtException), shutdown timeout, callback error handling, health check expanded (Drive + Sheets + scheduler), config hardened (Google creds required in prod), PM2 config fixed, Nginx finalized, deployment guide (DEPLOY.md). All 27 modules verified, startup clean.
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 4: Scheduler & Briefings — unified scheduler worker, recurring tasks, daily briefing (08:00), weekly review (Sun 20:00), reminder delivery with Done/Snooze buttons
+- VPS deployment following DEPLOY.md
+- Phase 2 (future): Voice notes (Whisper), Calendar module
 
 **Pending Bryan's Action:**
+- Deploy to VPS following DEPLOY.md
 - Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
+- Install LibreOffice on VPS: `apt-get install libreoffice`
 
 **Known Issues / Blockers:**
-- Google OAuth credentials needed for Drive + Sheets (deferred to Phase 5/6)
+- punycode deprecation warning from Node.js 22+ — harmless, upstream dependency
 - Voice notes (Whisper) deferred — no OpenAI API key needed yet
-- VPS deployment deferred until ready for production testing (Nginx domain + SSL setup needed)
 
 ---
 
@@ -289,6 +296,19 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-25 01:00 | Reuse ecomwave.duckdns.org for webhooks | Separate DuckDNS subdomain | SSL already configured, webhook paths don't conflict with CRM routes. Simpler setup. | Low |
+| 2026-02-25 01:00 | Always reschedule recurring jobs (even on failure) | Only reschedule on success | Prevents 60-second retry loop when external services are down. | Low |
+| 2026-02-25 01:00 | unhandledRejection: log + continue | Exit and let PM2 restart | One failed promise shouldn't kill both bots. uncaughtException still exits. | Low |
+| 2026-02-25 01:00 | Google creds required in prod, optional in dev | Always optional / always required | Dev works for todo/notes without Google. Prod fails fast on startup, not on first file upload. | Low |
+| 2026-02-25 01:00 | Remove --env-file from PM2 | Keep both dotenv and --env-file | dotenv already loads .env in config.js. Double-loading is redundant and could cause issues. | Low |
+| 2026-02-25 00:20 | Skip sharp image enhancement | Add sharp for scanner-like look | Claude Vision reads raw images — enhancement is cosmetic only. Zero OCR benefit, adds native-binding dependency. Bryan approved skipping. | N/A |
+| 2026-02-25 00:20 | Haiku for receipt Vision extraction | Sonnet (vision) | Structured extraction, not complex reasoning. ~3x cheaper. Confidence scoring catches quality issues. | Low |
+| 2026-02-25 00:20 | YYYY/MM subfolder organization for receipts | Flat folder with date prefix | Per spec. Better long-term organization. Folders created on demand. | Low |
+| 2026-02-25 00:20 | Inline Delete button on confirmation | /delete command | Button tap is instant UX — carries driveFileId + sheetRow. One tap deletes from both Sheets and Drive. | Low |
+| 2026-02-24 22:50 | Dedicated Haiku call for file caption parsing | Reuse full intent engine | File messages bypass the text intent engine — caption only needs stream + task link extraction. Focused prompt is cheaper and more reliable. Falls back to keyword inference on failure. | Low |
+| 2026-02-24 22:50 | Dynamic stream folder discovery via Drive API | Hardcode subfolder IDs in .env | Listing TaskRefs/ subfolders on first use and caching is more resilient than 5 hardcoded IDs. One extra API call on startup, then zero overhead. | Low |
+| 2026-02-24 22:50 | Separate notionFiles.js for File Links | Extend todo/notion.js | File Links handling is file-module-specific. Keeping it in files/ folder maintains clean separation. todo/notion.js stays focused on task CRUD. | Low |
+| 2026-02-24 15:00 | cron-parser npm package for next_run_at | Hand-code cron parser | node-cron doesn't expose "next occurrence" calculator. cron-parser handles DST, month boundaries, leap years. Tiny package, low effort to reverse. | Low |
 | 2026-02-24 14:00 | Intent shift only after 5s preview shown | Check on every message | Within 5s rapid-fire → just append (zero cost). After preview shown → Haiku shift check. Safe fallback: assume continues_draft on failure. | Low |
 | 2026-02-24 14:00 | Persistent reply keyboard for UX | Text-only interface | 6-button keyboard + setMyCommands + /help. Bryan found features hard to discover. Zero API cost for button taps. | Low |
 | 2026-02-24 13:00 | Raw REST for Notion database queries | Use @notionhq/client dataSources.query() | @notionhq/client v5.x removed databases.query(). Built queryDatabase() helper calling POST /databases/{id}/query via fetch. | Low |

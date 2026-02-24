@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-24 22:50 MYT | Updated By: Claude Code (Session 6)
+# Last Updated: 2026-02-24 23:35 MYT | Updated By: Claude Code (Session 6)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 5 Complete — ready for Phase 6 (Bot 2: Receipts)
-**Last Updated:** 2026-02-24 22:50 MYT
+**Phase:** Phase 5 Complete — tested and verified, ready for Phase 6 (Bot 2: Receipts)
+**Last Updated:** 2026-02-24 23:35 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md

@@ -4,7 +4,7 @@
 
 ---
 
-### Session 6 — 2026-02-24 22:50 MYT (Phase 5: File Handling)
+### Session 6 — 2026-02-24 23:35 MYT (Phase 5: File Handling)
 
 **Completed:**
 - [x] Google Drive folder structure created programmatically (scripts/setup-google.js): TaskRefs/ root + 5 stream subfolders (Minionions, KLN, Overdrive, Personal, Property) + receipts/ folder (Bot 2).
@@ -18,6 +18,8 @@
 - [x] Intent engine updated: ATTACH_FILE added to validIntents.
 - [x] Router updated: Phase 5 placeholder replaced with file handler, ATTACH_FILE text-only case handled (prompts user to send actual file), help text updated with FILES section.
 - [x] Startup verified: clean boot, all modules load, no regressions on Phase 1–4 features.
+- [x] Bug fix: Telegram file download — grammY's getFile() doesn't have .download() method. Fixed to construct download URL and use native fetch(). Tested with DOCX file.
+- [x] Live test passed: Bryan sent "EXECUTIVE SUMMARY- KL North.docx" with caption → Haiku detected KLN stream + task link → uploaded to Drive → linked to existing Notion task. PDF conversion gracefully skipped (no LibreOffice on Windows).
 
 **Next Up (Phase 6 — Bot 2: Receipts):**
 - [ ] Claude Vision receipt extraction (src/bot2/vision.js)

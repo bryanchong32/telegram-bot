@@ -80,30 +80,44 @@ async function processDueJobs() {
  */
 async function executeJob(job) {
   const payload = JSON.parse(job.payload || '{}');
+  let executionFailed = false;
 
-  switch (job.type) {
-    case 'briefing':
-      await executeBriefing(job);
-      break;
+  try {
+    switch (job.type) {
+      case 'briefing':
+        await executeBriefing(job);
+        break;
 
-    case 'review':
-      await executeReview(job);
-      break;
+      case 'review':
+        await executeReview(job);
+        break;
 
-    case 'reminder':
-      await executeReminder(job, payload);
-      break;
+      case 'reminder':
+        await executeReminder(job, payload);
+        break;
 
-    case 'recurring':
-      await executeRecurring(job, payload);
-      break;
+      case 'recurring':
+        await executeRecurring(job, payload);
+        break;
 
-    default:
-      logger.warn('Scheduler: unknown job type', { type: job.type, jobId: job.id });
-      return;
+      default:
+        logger.warn('Scheduler: unknown job type', { type: job.type, jobId: job.id });
+        return;
+    }
+  } catch (err) {
+    /* Log the error but ALWAYS reschedule below to prevent retry loops.
+       Without this, a failed recurring job's next_run_at stays in the past
+       and it fires every 60 seconds until the external service recovers. */
+    executionFailed = true;
+    logger.error('Scheduler: job execution error', {
+      jobId: job.id,
+      type: job.type,
+      error: err.message,
+    });
   }
 
-  /* After successful execution: update last_triggered and reschedule or deactivate */
+  /* ALWAYS update last_triggered and reschedule/deactivate — even on failure.
+     This prevents a failed job from firing every 60s in a retry loop. */
   const nowISO = new Date().toISOString();
 
   if (job.cron_expr) {
@@ -112,9 +126,11 @@ async function executeJob(job) {
     db.prepare(
       'UPDATE scheduled_jobs SET last_triggered = ?, next_run_at = ? WHERE id = ?'
     ).run(nowISO, nextRun, job.id);
-    logger.info('Scheduler: job rescheduled', { jobId: job.id, type: job.type, nextRun });
+    const status = executionFailed ? 'rescheduled (after failure)' : 'rescheduled';
+    logger.info(`Scheduler: job ${status}`, { jobId: job.id, type: job.type, nextRun });
   } else {
-    /* One-shot job (reminder) — deactivate after firing */
+    /* One-shot job (reminder) — deactivate after firing (even if delivery failed,
+       we don't want reminders firing repeatedly on transient errors) */
     db.prepare(
       'UPDATE scheduled_jobs SET last_triggered = ?, active = 0 WHERE id = ?'
     ).run(nowISO, job.id);

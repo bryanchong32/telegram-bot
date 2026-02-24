@@ -285,40 +285,45 @@ function registerRouter(bot) {
     const data = ctx.callbackQuery.data;
     logger.info('Bot 1 callback query', { chatId: ctx.chat.id });
 
-    if (data.startsWith('complete:')) {
-      await handleCompleteCallback(ctx);
-      return;
-    }
+    try {
+      if (data.startsWith('complete:')) {
+        await handleCompleteCallback(ctx);
+        return;
+      }
 
-    if (data === 'draft:save') {
-      await handleDraftSave(ctx, botInstance);
-      return;
-    }
+      if (data === 'draft:save') {
+        await handleDraftSave(ctx, botInstance);
+        return;
+      }
 
-    if (data === 'draft:discard') {
-      await handleDraftDiscard(ctx);
-      return;
-    }
+      if (data === 'draft:discard') {
+        await handleDraftDiscard(ctx);
+        return;
+      }
 
-    /* Reminder callbacks — Done marks complete, Snooze reschedules +1hr */
-    if (data.startsWith('reminder:done:')) {
-      const jobId = parseInt(data.split(':')[2], 10);
-      markReminderDone(jobId);
-      await ctx.answerCallbackQuery({ text: 'Reminder dismissed' });
-      await ctx.editMessageText(`✅ ${ctx.callbackQuery.message.text} — done`);
-      return;
-    }
+      /* Reminder callbacks — Done marks complete, Snooze reschedules +1hr */
+      if (data.startsWith('reminder:done:')) {
+        const jobId = parseInt(data.split(':')[2], 10);
+        markReminderDone(jobId);
+        await ctx.answerCallbackQuery({ text: 'Reminder dismissed' });
+        await ctx.editMessageText(`✅ ${ctx.callbackQuery.message.text} — done`);
+        return;
+      }
 
-    if (data.startsWith('reminder:snooze:')) {
-      const jobId = parseInt(data.split(':')[2], 10);
-      snoozeReminder(jobId);
-      await ctx.answerCallbackQuery({ text: 'Snoozed for 1 hour' });
-      await ctx.editMessageText(`⏩ ${ctx.callbackQuery.message.text} — snoozed 1hr`);
-      return;
-    }
+      if (data.startsWith('reminder:snooze:')) {
+        const jobId = parseInt(data.split(':')[2], 10);
+        snoozeReminder(jobId);
+        await ctx.answerCallbackQuery({ text: 'Snoozed for 1 hour' });
+        await ctx.editMessageText(`⏩ ${ctx.callbackQuery.message.text} — snoozed 1hr`);
+        return;
+      }
 
-    /* Unknown callback — shouldn't happen but handle gracefully */
-    await ctx.answerCallbackQuery({ text: 'Unknown action' });
+      /* Unknown callback — shouldn't happen but handle gracefully */
+      await ctx.answerCallbackQuery({ text: 'Unknown action' });
+    } catch (err) {
+      logger.error('Callback query error', { error: err.message, data });
+      await ctx.answerCallbackQuery({ text: 'Something went wrong' }).catch(() => {});
+    }
   });
 
   /**

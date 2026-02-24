@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Telegram Bots
 
-**Last Updated:** 2026-02-25 00:20 MYT
+**Last Updated:** 2026-02-25 01:00 MYT
 
 ---
 
@@ -51,9 +51,9 @@ Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min
 | PM2 process name | telegram-bots |
 | Internal port | 3003 |
 | PM2 user | deploy (NEVER run PM2 as root — shared VPS with ECOMWAVE CRM) |
-| Nginx config | /etc/nginx/sites-enabled/telegram-bots |
-| Webhook URL (Bot 1) | https://{domain}/webhook/bot1 |
-| Webhook URL (Bot 2) | https://{domain}/webhook/bot2 |
+| Nginx config | Location blocks in /etc/nginx/sites-available/ecomwave |
+| Webhook URL (Bot 1) | https://ecomwave.duckdns.org/webhook/bot1 |
+| Webhook URL (Bot 2) | https://ecomwave.duckdns.org/webhook/bot2 |
 | SSL | Let's Encrypt (auto-renew) |
 | SQLite DB | /home/deploy/telegram-bots/data/bot.db |
 | Timezone | Asia/Kuala_Lumpur (UTC+8) |
@@ -66,7 +66,7 @@ Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min
 | ECOMWAVE CRM (staging) | 3002 | ecomwave-crm-staging |
 | Telegram Bots | 3003 | telegram-bots |
 
-**Note:** Domain TBD — options: DuckDNS subdomain (free, instant) or purchased domain. Webhook doesn't need a pretty URL since only Telegram servers hit it.
+**Note:** Webhooks use the existing ecomwave.duckdns.org domain (already has SSL). Location blocks added to the same Nginx config — no separate domain needed. Only Telegram servers hit these URLs.
 
 ---
 
@@ -161,7 +161,7 @@ Message type?
 
 | Package | Purpose | Why Not Native |
 |---|---|---|
-| grammy (or node-telegram-bot-api) | Telegram Bot API wrapper | Handles webhook setup, message parsing, inline keyboards, callback queries. Decision TBD in Phase 1. |
+| grammy | Telegram Bot API wrapper | Handles webhook setup, message parsing, inline keyboards, callback queries. Chosen over node-telegram-bot-api for modern JS support. |
 | @notionhq/client | Notion API client | Official SDK with typed methods, rate limit handling. |
 | better-sqlite3 | SQLite for Node.js | Synchronous API is simpler for draft buffer (no async race conditions). Faster than node-sqlite3. |
 | node-cron | Cron-style scheduler | Triggers the scheduler worker check every 60 seconds. Lightweight. |
@@ -211,3 +211,7 @@ apt-get install libreoffice    # Office → PDF conversion (ATTACH_FILE)
 | Draft lost on VPS restart | SQLite persistence | Reload from draft_buffer on startup | "📝 Recovered unsaved draft — tap to review" |
 | Scheduler missed triggers | last_triggered check on startup | Re-run missed from last 24hrs | "📋 Missed recurring task created: {name}" |
 | pending_sync 5th failure | retry_count = 5 | Stop retrying | Notify Bryan via Telegram |
+| Scheduler job execution fails | try/catch per job | Always reschedule (prevent retry loop) | Error logged |
+| Unhandled promise rejection | process.on('unhandledRejection') | Log and continue (don't crash) | Error in PM2 logs |
+| Uncaught exception | process.on('uncaughtException') | Log and exit → PM2 auto-restarts | Error in PM2 logs |
+| Graceful shutdown hangs | 10s timeout | Force process.exit(1) | PM2 auto-restarts |

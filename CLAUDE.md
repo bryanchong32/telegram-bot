@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context & Standards
 # Telegram Bots | Owner: Bryan
-# Last Updated: 2026-02-25 00:20 MYT | Updated By: Claude Code (Session 7)
+# Last Updated: 2026-02-25 01:00 MYT | Updated By: Claude Code (Session 8)
 
 ---
 
@@ -252,8 +252,8 @@ Then summarise to Bryan:
 
 *(Updated by Claude Code each session with timestamp — never manually edited by Bryan)*
 
-**Phase:** Phase 6 Complete — Bot 2 Receipt Tracker built and tested, ready for Phase 7 (Polish & Hardening)
-**Last Updated:** 2026-02-25 00:20 MYT
+**Phase:** ALL 7 PHASES COMPLETE — Ready for VPS deployment
+**Last Updated:** 2026-02-25 01:00 MYT
 
 **Completed:**
 - 2026-02-24 — Specs written: telegram-bots-plan.md, notion-todo-spec.md, notion-quicknotes-spec.md
@@ -270,20 +270,23 @@ Then summarise to Bryan:
 - 2026-02-24 16:00 — GCP setup complete: Google Cloud project created, Drive + Sheets APIs enabled, OAuth 2.0 credentials obtained via OAuth Playground, connection verified (bryanchong32@gmail.com). googleapis package installed.
 - 2026-02-24 22:50 — Phase 5 File Handling complete: Google Drive folders created (TaskRefs + 5 stream subfolders + receipts), Sheets expense log created, Google auth helper (utils/google.js), Drive upload module (date-prefix, sharing, retry), Office→PDF conversion (LibreOffice headless, graceful fallback), ATTACH_FILE handler (download→convert→upload→link, Haiku caption parsing), Notion File Links appender (GET→append→PATCH), router + intent engine updated. Startup verified clean.
 - 2026-02-25 00:20 — Phase 6 Bot 2 Receipt Tracker complete: Claude Vision extraction (Haiku, is_receipt + confidence validation), Drive upload (YYYY/MM subfolders), Sheets logging (9 columns incl. Logged By), expense queries (Haiku NLP → Sheets), inline Delete button, non-receipt rejection, low-confidence re-upload prompt. Drive folders reorganized to Bryan's specified locations. Live tested from Telegram.
+- 2026-02-25 01:00 — Phase 7 Polish & Hardening complete: pending sync retry worker (create_task + create_note), scheduler reschedule-on-failure fix, process error handlers (unhandledRejection + uncaughtException), shutdown timeout, callback error handling, health check expanded (Drive + Sheets + scheduler), config hardened (Google creds required in prod), PM2 config fixed, Nginx finalized, deployment guide (DEPLOY.md). All 27 modules verified, startup clean.
 
 **In Progress:**
 - None
 
 **Next Up:**
-- Phase 7: Polish & Hardening (error handling, crash recovery, health check, security audit, VPS deployment)
+- VPS deployment following DEPLOY.md
+- Phase 2 (future): Voice notes (Whisper), Calendar module
 
 **Pending Bryan's Action:**
+- Deploy to VPS following DEPLOY.md
 - Set up Notion Board view in Master Tasks database (manual — Notion API doesn't create views)
+- Install LibreOffice on VPS: `apt-get install libreoffice`
 
 **Known Issues / Blockers:**
-- LibreOffice must be installed on VPS for Office→PDF conversion (`apt-get install libreoffice`). Not available locally on Windows — conversion will gracefully fall back to uploading originals until VPS deployment.
+- punycode deprecation warning from Node.js 22+ — harmless, upstream dependency
 - Voice notes (Whisper) deferred — no OpenAI API key needed yet
-- VPS deployment deferred until ready for production testing (Nginx domain + SSL setup needed)
 
 ---
 
@@ -293,6 +296,11 @@ Then summarise to Bryan:
 
 | Timestamp (MYT) | Decision | Alternatives Considered | Reason Chosen | Effort to Reverse |
 |---|---|---|---|---|
+| 2026-02-25 01:00 | Reuse ecomwave.duckdns.org for webhooks | Separate DuckDNS subdomain | SSL already configured, webhook paths don't conflict with CRM routes. Simpler setup. | Low |
+| 2026-02-25 01:00 | Always reschedule recurring jobs (even on failure) | Only reschedule on success | Prevents 60-second retry loop when external services are down. | Low |
+| 2026-02-25 01:00 | unhandledRejection: log + continue | Exit and let PM2 restart | One failed promise shouldn't kill both bots. uncaughtException still exits. | Low |
+| 2026-02-25 01:00 | Google creds required in prod, optional in dev | Always optional / always required | Dev works for todo/notes without Google. Prod fails fast on startup, not on first file upload. | Low |
+| 2026-02-25 01:00 | Remove --env-file from PM2 | Keep both dotenv and --env-file | dotenv already loads .env in config.js. Double-loading is redundant and could cause issues. | Low |
 | 2026-02-25 00:20 | Skip sharp image enhancement | Add sharp for scanner-like look | Claude Vision reads raw images — enhancement is cosmetic only. Zero OCR benefit, adds native-binding dependency. Bryan approved skipping. | N/A |
 | 2026-02-25 00:20 | Haiku for receipt Vision extraction | Sonnet (vision) | Structured extraction, not complex reasoning. ~3x cheaper. Confidence scoring catches quality issues. | Low |
 | 2026-02-25 00:20 | YYYY/MM subfolder organization for receipts | Flat folder with date prefix | Per spec. Better long-term organization. Folders created on demand. | Low |

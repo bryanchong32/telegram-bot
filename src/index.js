@@ -72,9 +72,10 @@ async function main() {
     res.json({ service: 'telegram-bots', status: 'running' });
   });
 
-  /* 4. Start background workers — pass bot1 so scheduler can send Telegram messages */
+  /* 4. Start background workers — pass bot1 so scheduler can send Telegram messages.
+     Pending sync worker gets bot1 + chatId so it can notify Bryan on max retries. */
   startScheduler(bot1);
-  startPendingSyncWorker();
+  startPendingSyncWorker(bot1, config.ALLOWED_TELEGRAM_USER_ID);
 
   /* 5. Start bots — webhook mode (production) or long polling (development) */
   if (config.NODE_ENV === 'production') {
@@ -115,9 +116,18 @@ async function main() {
     logger.info(`Express server listening on port ${config.PORT}`);
   });
 
-  /* 7. Graceful shutdown handler */
+  /* 7. Graceful shutdown handler with 10s timeout.
+     If graceful shutdown hangs (e.g. webhook request in-flight), force exit. */
   const shutdown = async (signal) => {
     logger.info(`Received ${signal} — shutting down gracefully`);
+
+    /* Force exit after 10s if graceful shutdown hangs */
+    const forceTimer = setTimeout(() => {
+      logger.error('Graceful shutdown timed out after 10s — forcing exit');
+      process.exit(1);
+    }, 10000);
+    forceTimer.unref(); /* Don't keep process alive just for this timer */
+
     clearAllState();
     stopScheduler();
     stopPendingSyncWorker();
@@ -134,6 +144,25 @@ async function main() {
 
   logger.info('All systems initialised');
 }
+
+/* ─── Process-level error handlers ─── */
+
+/* Catch unhandled promise rejections — log and survive (don't crash).
+   PM2 will restart on crash anyway, but a single failed async operation
+   shouldn't kill both bots. Log the error for debugging. */
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? reason.stack : undefined;
+  logger.error('Unhandled promise rejection', { error: msg, stack });
+});
+
+/* Catch uncaught exceptions — log and exit so PM2 can restart cleanly.
+   Unlike rejections, a sync exception means the process is in an unknown
+   state. Log and exit is the safest recovery path. */
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception — exiting', { error: err.message, stack: err.stack });
+  process.exit(1);
+});
 
 /* Run the main function and catch any startup errors */
 main().catch((err) => {

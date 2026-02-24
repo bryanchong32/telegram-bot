@@ -1,6 +1,33 @@
 # STATUS.md — Telegram Bots
 
-## Current Phase: Phase 6 — Bot 2: Receipts (COMPLETE)
+## Current Phase: Phase 7 — Polish & Hardening (COMPLETE)
+
+---
+
+### Session 8 — 2026-02-25 01:00 MYT (Phase 7: Polish & Hardening)
+
+**Completed:**
+- [x] Pending sync worker fully implemented (src/shared/pendingSync.js): retries create_task and create_note actions every 5 minutes. upload_file gracefully resolved (temp file lost on restart, cannot retry). Notifies Bryan via Telegram after 5th failure. Unknown actions cleared from queue.
+- [x] Scheduler reschedule-on-failure fix (src/shared/scheduler.js): recurring jobs now ALWAYS reschedule to next cron time, even on execution failure. Previously, a failed recurring job's next_run_at stayed in the past, causing a 60-second retry loop until the external service recovered.
+- [x] Process-level error handlers (src/index.js): unhandledRejection → log and continue (don't crash both bots for one failed promise). uncaughtException → log and exit (PM2 auto-restarts).
+- [x] Graceful shutdown timeout (src/index.js): 10-second timeout on SIGTERM/SIGINT — forces exit if bot.stop() or server.close() hang.
+- [x] Callback query error handling (src/bot1/router.js): entire callback_query handler wrapped in try/catch. Reminder Done/Snooze, draft Save/Discard, and task Complete callbacks all protected.
+- [x] Health check enhanced (src/utils/health.js): added Google Drive API check (OAuth token validity), Google Sheets check (reads 1 cell from Expense Log), scheduler status (active job count + next trigger time), pending sync queue with failed count. Skips Google checks gracefully when credentials aren't configured.
+- [x] Config hardened (src/shared/config.js): Google credentials + Notion DB IDs now required in production. Falls back to optional in development so todo/notes testing still works without Google setup. requiredInProd() helper.
+- [x] PM2 config fixed (ecosystem.config.js): removed redundant --env-file=.env flag (dotenv already loads it in config.js). PM2 env block still provides NODE_ENV/PORT/TZ overrides.
+- [x] Nginx config finalized (nginx/telegram-bots.conf): updated to add location blocks to existing ecomwave.duckdns.org server block (shares SSL cert). Separate domain not needed.
+- [x] Webhook script updated (scripts/set-webhooks.js): defaults to ecomwave.duckdns.org. WEBHOOK_DOMAIN override still supported.
+- [x] Deployment guide created (DEPLOY.md): step-by-step VPS deployment instructions covering code upload, .env setup, npm install, Nginx config, PM2 start, webhook registration, verification, and troubleshooting.
+- [x] All 27 modules load cleanly. Full startup verified — both bots polling, scheduler running, pending sync worker active.
+
+**Pending Bryan's Action:**
+- Deploy to VPS following DEPLOY.md
+- Set up Notion Board view in Master Tasks database (manual)
+- Install LibreOffice on VPS: `apt-get install libreoffice`
+
+**Known Issues:**
+- punycode deprecation warning from Node.js 22+ — harmless, upstream dependency issue
+- Voice notes (Whisper) deferred to Phase 2 — no OpenAI API key needed yet
 
 ---
 
@@ -245,4 +272,4 @@
 | 4. Scheduler & Briefings | ✅ Complete | Unified scheduler, recurring, daily 08:00, weekly Sun 20:00 |
 | 5. File Handling | ✅ Complete | Drive upload, PDF conversion, ATTACH_FILE, task linking |
 | 6. Bot 2 — Receipts | ✅ Complete | Vision extraction, Sheets logging, Drive storage, queries, delete, validation |
-| 7. Polish & Hardening | ⬜ Not started | Edge cases, crash recovery, health check, security audit |
+| 7. Polish & Hardening | ✅ Complete | Pending sync retry, scheduler fix, error handlers, health check, deployment guide |

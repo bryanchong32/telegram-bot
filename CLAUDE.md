@@ -182,7 +182,7 @@ TZ=Asia/Kuala_Lumpur
 
 ## ARCHITECTURE SUMMARY
 
-Two Telegram bots sharing a single Node.js process. Bot 1 handles personal productivity (todos, notes, reminders, briefings via Notion). Bot 2 handles receipt tracking (OCR → Google Sheets + Drive). Full detail in ARCHITECTURE.md.
+Two Telegram bots sharing a single Node.js process. Bot 1 handles personal productivity (todos, notes, reminders, briefings via Notion). Bot 2 handles receipt tracking (OCR → Google Sheets + Drive). Bot 3 (Request Agent) runs as a separate PM2 process — handles scoped (.md file) and quick (text message) requests, logging to Notion with optional GitHub commits. Full detail in ARCHITECTURE.md.
 
 ```
 telegram-bot/
@@ -230,6 +230,7 @@ Full schema: see SCHEMA.md
 - Timezone is UTC+8 (Asia/Kuala_Lumpur) everywhere. All cron expressions, all date comparisons, all briefing triggers.
 - Notion API replaces rich_text on PATCH — always GET first, append, then PATCH. Process file attachments sequentially.
 - Stream routing: Todos default to Personal on low confidence. Notes leave stream blank on low confidence. Same router module, different fallback behavior.
+- Bot 3 quick requests support custom project names via "Other" button — custom names go to the shared Notion DB (`DEFAULT_NOTION_DB_ID` in router.js). `/cancel` command resets mid-flow state.
 - Save/Discard buttons are Telegram callback_query events (data: `draft:save`, `draft:discard`), NOT Gemini-classified intents.
 - AI stack migrated from Anthropic (Haiku/Sonnet) to Google Gemini 2.0 Flash + Cloud Vision OCR (Feb 2026). Old `anthropic.js` deleted.
 - Receipt pipeline: Images → Cloud Vision OCR → Gemini text structuring. PDFs → Gemini multimodal directly.

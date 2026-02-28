@@ -25,6 +25,9 @@ const DEDUP_TTL_MS = 5 * 60 * 1000; /* 5 minutes */
 
 const pendingQuickRequests = new Map();
 const QR_TTL_MS = 5 * 60 * 1000; /* 5 minutes */
+const DEFAULT_NOTION_DB_ID = '315cb310-967f-816c-9b5c-cb246c681079';
+const VALID_TYPES = ['Bug', 'Feature', 'Enhancement', 'UX/Polish', 'Refactor'];
+const VALID_PRIORITIES = ['P1 Critical', 'P2 Important', 'P3 Backlog'];
 
 /**
  * Gets pending quick request for a chat, cleaning up expired entries.
@@ -79,10 +82,21 @@ function registerRouter(bot) {
       '  3. Send it here\n\n' +
       '💬 Quick request (text message):\n' +
       '  1. Send any text message as the request title\n' +
-      '  2. Tap buttons to select project, type, priority\n' +
-      '  3. Entry logged in Notion as Unscoped\n\n' +
-      'Valid projects: ' + Object.keys(projects).join(', ')
+      '  2. Tap buttons to select project (or "Other" for a new project)\n' +
+      '  3. Select type and priority\n' +
+      '  4. Entry logged in Notion as Unscoped\n\n' +
+      '/cancel — reset if you get stuck mid-flow\n\n' +
+      'Known projects: ' + Object.keys(projects).join(', ')
     );
+  });
+
+  /* /cancel — reset any in-progress quick request flow */
+  bot.command('cancel', async (ctx) => {
+    const chatId = ctx.chat.id;
+    const had = pendingQuickRequests.has(chatId);
+    pendingQuickRequests.delete(chatId);
+    logger.info('Bot 3 /cancel', { chatId, hadPending: had });
+    await ctx.reply(had ? 'Cancelled. Send a new message anytime.' : 'Nothing to cancel.');
   });
 
   /* /health — simple health check via Telegram */
@@ -105,9 +119,6 @@ function registerRouter(bot) {
 
   /* ─── Quick Request — inline button callbacks ─── */
 
-  const VALID_TYPES = ['Bug', 'Feature', 'Enhancement', 'UX/Polish', 'Refactor'];
-  const VALID_PRIORITIES = ['P1 Critical', 'P2 Important', 'P3 Backlog'];
-
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
     if (!data.startsWith('qr:')) return;
@@ -124,6 +135,12 @@ function registerRouter(bot) {
     const parts = data.split(':');
     const action = parts[1];
     const value = parts.slice(2).join(':');
+
+    if (action === 'project' && value === '__other__') {
+      pending.step = 'custom_project';
+      await ctx.editMessageText('Type the project name:');
+      return;
+    }
 
     if (action === 'project') {
       pending.project = value;
@@ -159,16 +176,16 @@ function registerRouter(bot) {
       pending.priority = value;
       pendingQuickRequests.delete(chatId);
 
+      /* Use project config if it exists, otherwise fall back to default Notion DB */
       const projectConfig = projects[pending.project];
-      if (!projectConfig) {
-        await ctx.editMessageText('Unknown project. Send a new message to try again.');
-        return;
-      }
+      const notionDatabaseId = projectConfig
+        ? projectConfig.notion_database_id
+        : DEFAULT_NOTION_DB_ID;
 
       try {
         await ctx.editMessageText(`Logging request...`);
 
-        const requestId = await getNextRequestId(projectConfig.notion_database_id);
+        const requestId = await getNextRequestId(notionDatabaseId);
 
         await createQuickEntry({
           title: pending.title,
@@ -176,7 +193,7 @@ function registerRouter(bot) {
           project: pending.project,
           type: pending.type,
           priority: pending.priority,
-          notionDatabaseId: projectConfig.notion_database_id,
+          notionDatabaseId,
         });
 
         await ctx.editMessageText(
@@ -205,7 +222,27 @@ function registerRouter(bot) {
     const text = ctx.message.text.trim();
     if (!text || text.startsWith('/')) return;
 
-    pendingQuickRequests.set(ctx.chat.id, {
+    /* If waiting for a custom project name, use this text as the project */
+    const chatId = ctx.chat.id;
+    const existing = getPending(chatId);
+    if (existing && existing.step === 'custom_project') {
+      existing.project = text;
+      existing.step = 'type';
+
+      await ctx.reply('Type?', {
+        reply_markup: {
+          inline_keyboard: [
+            VALID_TYPES.map((t) => ({
+              text: t,
+              callback_data: `qr:type:${t}`,
+            })),
+          ],
+        },
+      });
+      return;
+    }
+
+    pendingQuickRequests.set(chatId, {
       title: text,
       step: 'project',
       timestamp: Date.now(),
@@ -219,6 +256,7 @@ function registerRouter(bot) {
             text: key,
             callback_data: `qr:project:${key}`,
           })),
+          [{ text: '✏️ Other', callback_data: 'qr:project:__other__' }],
         ],
       },
     });

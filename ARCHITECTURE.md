@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Telegram Bots
 
-**Last Updated:** 2026-02-25 01:00 MYT
+**Last Updated:** 2026-02-28 21:30 MYT
 
 ---
 
@@ -158,8 +158,10 @@ User ID in whitelist? → No → silently ignore
     ↓ Yes
 Message type?
     ├── /command → Command handler
-    │     /start, /help, /health
-    ├── Document (.md file) ↓
+    │     /start, /help, /health, /cancel
+    │     /cancel → clears pending quick request state, resets flow
+    │
+    ├── Document (.md file) → Scoped request flow ↓
     │     Download from Telegram
     │         ↓
     │     Validate file extension (.md only)
@@ -178,7 +180,24 @@ Message type?
     │                             ↓
     │                         Reply: confirmation with GitHub + Notion links
     │
-    └── Text/Photo/Other → reject: "Send a .md document"
+    ├── Text → Quick request flow ↓
+    │     Pending custom_project step? → Use text as project name → show type buttons
+    │         ↓ No
+    │     Store title in pendingQuickRequests Map
+    │         ↓
+    │     Show project buttons: [known projects] + [✏️ Other]
+    │         ├── Known project → show type buttons
+    │         └── Other → "Type the project name:" → wait for text input
+    │             ↓
+    │     Show type buttons: Bug, Feature, Enhancement, UX/Polish, Refactor
+    │             ↓
+    │     Show priority buttons: P1 Critical, P2 Important, P3 Backlog
+    │             ↓
+    │     Create Notion entry (Unscoped, Quick Request)
+    │     Custom projects use DEFAULT_NOTION_DB_ID (shared DB)
+    │     Session expires after 5 minutes of inactivity
+    │
+    └── Photo/Other → reject: "Send a .md file or text message"
 ```
 
 ---

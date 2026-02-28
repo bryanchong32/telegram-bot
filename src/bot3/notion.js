@@ -102,20 +102,27 @@ async function createRequestEntry({ meta, githubUrls, notionDatabaseId }) {
 }
 
 /**
- * Queries the Notion database to find the highest REQ-XXX number,
- * then returns the next sequential ID (e.g. REQ-006).
+ * Queries the Notion database to find the highest REQ-XXX number
+ * for a specific project, then returns the next sequential ID.
  *
  * @param {string} notionDatabaseId — target Notion database ID
- * @returns {Promise<string>} — next request ID like "REQ-006"
+ * @param {string} project — project name to filter by
+ * @returns {Promise<string>} — next request ID like "REQ-002"
  */
-async function getNextRequestId(notionDatabaseId) {
+async function getNextRequestId(notionDatabaseId, project) {
   let highest = 0;
   let hasMore = true;
   let startCursor;
 
   /* @notionhq/client v5.x removed databases.query — use REST API directly */
   while (hasMore) {
-    const body = { page_size: 100 };
+    const body = {
+      page_size: 100,
+      filter: {
+        property: 'Project',
+        select: { equals: project },
+      },
+    };
     if (startCursor) body.start_cursor = startCursor;
 
     const response = await withRetry(async () => {

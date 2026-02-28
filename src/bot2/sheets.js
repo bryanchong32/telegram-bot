@@ -46,15 +46,17 @@ async function appendExpenseRow(receipt) {
     throw new Error('GSHEETS_EXPENSE_LOG_ID not set — run scripts/setup-google.js first');
   }
 
-  /* Duplicate check — reject if same date + amount already exists */
-  const isDup = await checkDuplicate(receipt.date, receipt.amount);
-  if (isDup) {
-    logger.warn('Duplicate expense rejected', {
-      date: receipt.date,
-      merchant: receipt.merchant,
-      amount: receipt.amount,
-    });
-    return { rowIndex: null, duplicate: true };
+  /* Duplicate check — reject if same date + amount already exists (unless bypassed) */
+  if (!receipt.skipDuplicate) {
+    const isDup = await checkDuplicate(receipt.date, receipt.amount);
+    if (isDup) {
+      logger.warn('Duplicate expense rejected', {
+        date: receipt.date,
+        merchant: receipt.merchant,
+        amount: receipt.amount,
+      });
+      return { rowIndex: null, duplicate: true };
+    }
   }
 
   const row = [

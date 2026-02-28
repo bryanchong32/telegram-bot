@@ -67,8 +67,31 @@ async function handleAddNote(ctx, intent, bot) {
 async function handleSetReminder(ctx, intent) {
   const chatId = ctx.chat.id;
 
+  /* Step 1: Schedule the reminder in SQLite FIRST (independent of Notion) */
+  let jobId = null;
+  if (intent.remind_at) {
+    try {
+      const result = db.prepare(
+        'INSERT INTO scheduled_jobs (type, payload, next_run_at, chat_id) VALUES (?, ?, ?, ?)'
+      ).run(
+        'reminder',
+        JSON.stringify({
+          message: intent.message,
+          note_id: null,
+        }),
+        intent.remind_at,
+        chatId
+      );
+      jobId = result.lastInsertRowid;
+    } catch (dbErr) {
+      logger.error('Failed to schedule reminder in SQLite', { error: dbErr.message });
+      await ctx.reply('Could not set reminder. Please try again.');
+      return;
+    }
+  }
+
+  /* Step 2: Try to save note to Notion (non-critical for reminder) */
   try {
-    /* Create a minimal note in Quick Notes DB */
     const page = await createNote({
       title: intent.message || 'Reminder',
       content: intent.message || '',
@@ -78,20 +101,15 @@ async function handleSetReminder(ctx, intent) {
       source: 'Text',
     });
 
-    /* Schedule the reminder in the unified scheduler */
-    if (intent.remind_at) {
-      db.prepare(
-        'INSERT INTO scheduled_jobs (type, payload, next_run_at, chat_id) VALUES (?, ?, ?, ?)'
-      ).run(
-        'reminder',
-        JSON.stringify({
-          message: intent.message,
-          note_id: page.id,
-        }),
-        intent.remind_at,
-        chatId
+    /* Update the scheduler row with the Notion page ID */
+    if (jobId) {
+      db.prepare('UPDATE scheduled_jobs SET payload = ? WHERE id = ?').run(
+        JSON.stringify({ message: intent.message, note_id: page.id }),
+        jobId
       );
+    }
 
+    if (intent.remind_at) {
       await ctx.reply(
         `Reminder set: "${intent.message}"\n` +
         `When: ${intent.remind_at}\n` +
@@ -106,9 +124,18 @@ async function handleSetReminder(ctx, intent) {
 
     logger.info('SET_REMINDER completed', { chatId, hasRemindAt: !!intent.remind_at });
   } catch (err) {
-    logger.error('SET_REMINDER failed', { error: err.message });
+    logger.error('SET_REMINDER: Notion save failed', { error: err.message });
     queuePendingSync('create_note', intent);
-    await ctx.reply('Notion is unreachable. Reminder queued locally and will sync when restored.');
+
+    if (intent.remind_at) {
+      await ctx.reply(
+        `Reminder set: "${intent.message}"\n` +
+        `When: ${intent.remind_at}\n` +
+        `Note couldn't be saved to Notion — will retry when restored.`
+      );
+    } else {
+      await ctx.reply('Notion is unreachable. Note queued locally and will sync when restored.');
+    }
   }
 }
 
@@ -170,7 +197,7 @@ async function handleListNotes(ctx, intent) {
       message += line + '\n';
     });
 
-    message += '\nReply with a number to expand, or "promote [number]" to convert to task.';
+    message += '\nReply "promote [note name]" to convert to task.';
 
     await ctx.reply(message.trim());
 
@@ -242,10 +269,7 @@ async function handlePromoteToTask(ctx, intent) {
     await markNotePromoted(notePageId);
 
     const stream = noteStream || intent.stream || 'Personal';
-    await ctx.reply(
-      `Promoted to task: ${noteTitle} [Inbox · ${stream}]\n` +
-      'Set urgency or due date? (or reply "skip")'
-    );
+    await ctx.reply(`Promoted to task: ${noteTitle} [Inbox · ${stream}]`);
 
     logger.info('PROMOTE_TO_TASK completed', { notePageId, noteTitle });
   } catch (err) {

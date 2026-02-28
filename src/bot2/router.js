@@ -274,6 +274,7 @@ async function handleReceiptMessage(ctx) {
     /* ─── Step 5: Log to Google Sheets (with duplicate check) ─── */
     const notes = buildNotes(receiptData);
     const loggedBy = getUserDisplayName(ctx);
+    const skipDuplicate = caption.toLowerCase().includes('different receipt');
     const { rowIndex, duplicate } = await appendExpenseRow({
       date: receiptData.date,
       merchant: receiptData.merchant,
@@ -283,6 +284,7 @@ async function handleReceiptMessage(ctx) {
       driveLink: webViewLink,
       notes,
       loggedBy,
+      skipDuplicate,
     });
 
     /* Duplicate detected — delete the Drive upload and tell user */

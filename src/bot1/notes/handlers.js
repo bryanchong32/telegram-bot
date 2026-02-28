@@ -170,7 +170,7 @@ async function handleListNotes(ctx, intent) {
       message += line + '\n';
     });
 
-    message += '\nReply with a number to expand, or "promote [number]" to convert to task.';
+    message += '\nReply "promote [note name]" to convert to task.';
 
     await ctx.reply(message.trim());
 

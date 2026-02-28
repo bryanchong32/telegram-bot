@@ -32,5 +32,23 @@ module.exports = {
       /* Watch (disabled in production — use pm2 restart instead) */
       watch: false,
     },
+    {
+      name: 'request-agent',
+      script: 'src/bot3/index.js',
+      cwd: '/home/deploy/telegram-bots',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3004,
+        TZ: 'Asia/Kuala_Lumpur',
+      },
+      max_restarts: 10,
+      min_uptime: '10s',
+      restart_delay: 5000,
+      error_file: '/home/deploy/telegram-bots/logs/request-agent-error.log',
+      out_file: '/home/deploy/telegram-bots/logs/request-agent-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      watch: false,
+    },
   ],
 };

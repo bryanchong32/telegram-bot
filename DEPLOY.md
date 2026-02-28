@@ -1,6 +1,6 @@
 # Deployment Guide — Telegram Bots
 
-Step-by-step instructions for deploying both bots to the Hetzner VPS (5.223.49.206).
+Step-by-step instructions for deploying all three bots to the Hetzner VPS (5.223.49.206).
 
 ---
 
@@ -55,6 +55,8 @@ Required environment variables (all must be set for production):
 - `GDRIVE_TASK_REFS_FOLDER_ID` — TaskRefs root folder
 - `GDRIVE_RECEIPTS_FOLDER_ID` — Receipts root folder
 - `GSHEETS_EXPENSE_LOG_ID` — Expense Log spreadsheet
+- `REQUEST_AGENT_BOT_TOKEN` — from @BotFather (Bot 3)
+- `GITHUB_TOKEN` — GitHub personal access token (repo scope, for Bot 3)
 - `NODE_ENV=production`
 - `PORT=3003`
 - `TZ=Asia/Kuala_Lumpur`
@@ -111,9 +113,24 @@ location /webhook/bot2 {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 
-# Bot health check
+# Bot 3 webhook — Request Agent
+location /webhook/request-agent {
+    proxy_pass http://127.0.0.1:3004/webhook/request-agent;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# Bot health check (Bot 1 + 2)
 location /bot-health {
     proxy_pass http://127.0.0.1:3003/health;
+    proxy_set_header Host $host;
+}
+
+# Bot 3 health check
+location /request-agent-health {
+    proxy_pass http://127.0.0.1:3004/health;
     proxy_set_header Host $host;
 }
 ```
@@ -136,10 +153,13 @@ pm2 start ecosystem.config.js
 pm2 save
 ```
 
-Verify it's running:
+This starts both PM2 processes defined in ecosystem.config.js: `telegram-bots` (Bot 1 + 2, port 3003) and `request-agent` (Bot 3, port 3004).
+
+Verify they're running:
 ```bash
 pm2 status
 pm2 logs telegram-bots --lines 20
+pm2 logs request-agent --lines 20
 ```
 
 ---
@@ -153,17 +173,25 @@ cd /home/deploy/telegram-bots
 node scripts/set-webhooks.js
 ```
 
-This sets both bots to receive updates via `https://ecomwave.duckdns.org/webhook/bot1` and `/webhook/bot2`.
+This sets Bot 1 and Bot 2 to receive updates via `https://ecomwave.duckdns.org/webhook/bot1` and `/webhook/bot2`.
+
+For Bot 3 (Request Agent), register the webhook separately:
+```bash
+curl "https://api.telegram.org/bot<REQUEST_AGENT_BOT_TOKEN>/setWebhook?url=https://ecomwave.duckdns.org/webhook/request-agent"
+```
 
 ---
 
 ## Step 8: Verify Deployment
 
-1. **Health check**: `curl https://ecomwave.duckdns.org/bot-health`
-2. **Bot 1**: Send `/health` to the Personal Assistant bot in Telegram
-3. **Bot 2**: Send `/health` to the Receipt Tracker bot in Telegram
-4. **Test Bot 1**: Send "show today's tasks"
-5. **Test Bot 2**: Send a receipt photo
+1. **Health check (Bot 1+2)**: `curl https://ecomwave.duckdns.org/bot-health`
+2. **Health check (Bot 3)**: `curl https://ecomwave.duckdns.org/request-agent-health`
+3. **Bot 1**: Send `/health` to the Personal Assistant bot in Telegram
+4. **Bot 2**: Send `/health` to the Receipt Tracker bot in Telegram
+5. **Bot 3**: Send `/health` to the Request Agent bot in Telegram
+6. **Test Bot 1**: Send "show today's tasks"
+7. **Test Bot 2**: Send a receipt photo
+8. **Test Bot 3**: Send a `.md` document
 
 ---
 
@@ -175,14 +203,19 @@ This sets both bots to receive updates via `https://ecomwave.duckdns.org/webhook
 scp -r src/ root@5.223.49.206:/home/deploy/telegram-bots/
 ssh root@5.223.49.206 "chown -R deploy:deploy /home/deploy/telegram-bots"
 
-# Restart (ALWAYS as deploy user)
+# Restart all bots (ALWAYS as deploy user)
+ssh root@5.223.49.206 "su - deploy -c 'cd /home/deploy/telegram-bots && pm2 restart all && pm2 save'"
+
+# Or restart individually
 ssh root@5.223.49.206 "su - deploy -c 'cd /home/deploy/telegram-bots && pm2 restart telegram-bots && pm2 save'"
+ssh root@5.223.49.206 "su - deploy -c 'cd /home/deploy/telegram-bots && pm2 restart request-agent && pm2 save'"
 ```
 
 ### Viewing logs
 ```bash
 su - deploy
 pm2 logs telegram-bots --lines 50
+pm2 logs request-agent --lines 50
 # or
 tail -f /home/deploy/telegram-bots/logs/out.log
 ```
@@ -204,9 +237,11 @@ PM2 auto-starts saved processes on boot. The app also:
 
 | Issue | Solution |
 |-------|----------|
-| Bot not responding | `su - deploy -c 'pm2 restart telegram-bots'` |
+| Bot 1/2 not responding | `su - deploy -c 'pm2 restart telegram-bots'` |
+| Bot 3 not responding | `su - deploy -c 'pm2 restart request-agent'` |
 | 409 conflict on startup | Normal — Telegram keeps old connections for ~30s. The bot retries automatically. |
 | Webhook not receiving | Check Nginx: `nginx -t`, check logs: `pm2 logs telegram-bots` |
 | PDF conversion failing | Install LibreOffice: `apt-get install libreoffice` |
 | Notion errors | Check API token in .env, check /health |
+| GitHub commit failing | Check GITHUB_TOKEN in .env — may have expired or lack repo scope |
 | Google API errors | Refresh token may have expired — re-do OAuth Playground flow |

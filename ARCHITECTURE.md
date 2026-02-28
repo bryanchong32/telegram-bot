@@ -6,7 +6,7 @@
 
 ## System Overview
 
-Two Telegram bots running as a single Node.js process on a Hetzner VPS. Bot 1 (Personal Assistant) uses Notion as its primary data store and SQLite for local state. Bot 2 (Receipt Tracker) uses Google Sheets + Google Drive. Both use the Anthropic API for AI capabilities.
+Three Telegram bots on a Hetzner VPS. Bot 1 (Personal Assistant) and Bot 2 (Receipt Tracker) run as a single Node.js process. Bot 3 (Request Agent) runs as a separate PM2 process. Bot 1 uses Notion as its primary data store and SQLite for local state. Bot 2 uses Google Sheets + Google Drive. Both use the Anthropic API for AI capabilities. Bot 3 receives `.md` documents, commits them to GitHub, and creates corresponding Notion entries.
 
 ```
 Telegram Servers
@@ -14,7 +14,8 @@ Telegram Servers
   ▼ (webhook POST)
 Nginx (port 443, HTTPS)
   ├── /webhook/bot1 → Bot 1 handler
-  └── /webhook/bot2 → Bot 2 handler
+  ├── /webhook/bot2 → Bot 2 handler
+  └── /webhook/request-agent → Bot 3 handler
   │
   ▼
 Node.js Process (PM2: telegram-bots, port 3003)
@@ -36,7 +37,13 @@ Node.js Process (PM2: telegram-bots, port 3003)
         ├── Google Sheets → append expense row
         └── Google Drive → store receipt image (/receipts/YYYY/MM/)
 
-Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min
+Node.js Process (PM2: request-agent, port 3004)
+  └── Bot 3 — Request Agent
+        ├── Parser → extract YAML frontmatter + markdown sections
+        ├── GitHub API → commit .md file to project repo
+        └── Notion API → create page in project database
+
+Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min (Bot 1/2 only)
 ```
 
 ---
@@ -54,6 +61,7 @@ Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min
 | Nginx config | Location blocks in /etc/nginx/sites-available/ecomwave |
 | Webhook URL (Bot 1) | https://ecomwave.duckdns.org/webhook/bot1 |
 | Webhook URL (Bot 2) | https://ecomwave.duckdns.org/webhook/bot2 |
+| Webhook URL (Bot 3) | https://ecomwave.duckdns.org/webhook/request-agent |
 | SSL | Let's Encrypt (auto-renew) |
 | SQLite DB | /home/deploy/telegram-bots/data/bot.db |
 | Timezone | Asia/Kuala_Lumpur (UTC+8) |
@@ -64,7 +72,8 @@ Fallback: pending_sync (SQLite) retries failed Notion/Drive writes every 5min
 |---|---|---|
 | ECOMWAVE CRM (production) | 3001 | ecomwave-crm |
 | ECOMWAVE CRM (staging) | 3002 | ecomwave-crm-staging |
-| Telegram Bots | 3003 | telegram-bots |
+| Telegram Bots (Bot 1 + 2) | 3003 | telegram-bots |
+| Request Agent (Bot 3) | 3004 | request-agent |
 
 **Note:** Webhooks use the existing ecomwave.duckdns.org domain (already has SSL). Location blocks added to the same Nginx config — no separate domain needed. Only Telegram servers hit these URLs.
 
@@ -140,6 +149,56 @@ Message type?
 
 ---
 
+## Message Flow — Bot 3
+
+```
+Incoming message
+    ↓
+User ID in whitelist? → No → silently ignore
+    ↓ Yes
+Message type?
+    ├── /command → Command handler
+    │     /start, /help, /health
+    ├── Document (.md file) ↓
+    │     Download from Telegram
+    │         ↓
+    │     Validate file extension (.md only)
+    │         ├── Not .md → reject: "Please send a .md file"
+    │         └── Valid .md ↓
+    │               Parse YAML frontmatter (gray-matter)
+    │                   ↓
+    │               Validate project field → match against projects.js registry
+    │                   ├── Unknown project → reject: "Unknown project: {name}"
+    │                   └── Valid project ↓
+    │                         Split markdown body into sections
+    │                             ↓
+    │                         Commit .md file to GitHub repo (project-specific path)
+    │                             ↓
+    │                         Create Notion page in project database
+    │                             ↓
+    │                         Reply: confirmation with GitHub + Notion links
+    │
+    └── Text/Photo/Other → reject: "Send a .md document"
+```
+
+---
+
+## Modules — Bot 3
+
+| Module | File | Purpose |
+|---|---|---|
+| Config | `src/bot3/config.js` | Environment variables, port, webhook path |
+| Projects | `src/bot3/projects.js` | Project registry — repo paths, Notion DB IDs, validation |
+| Logger | `src/bot3/logger.js` | Structured logging with timestamps |
+| Parser | `src/bot3/parser.js` | YAML frontmatter extraction, section splitting (gray-matter) |
+| GitHub | `src/bot3/github.js` | GitHub API — commit files to project repos |
+| Notion | `src/bot3/notion.js` | Notion API — create pages in project databases |
+| Bot | `src/bot3/bot.js` | Grammy bot instance, webhook configuration |
+| Router | `src/bot3/router.js` | Message handler — auth, validation, orchestration |
+| Index | `src/bot3/index.js` | Express server, webhook endpoint, PM2 entry point |
+
+---
+
 ## Folder Guide
 
 | Folder | Purpose |
@@ -150,6 +209,7 @@ Message type?
 | `src/bot1/files/` | File handling — Drive upload, PDF conversion, Notion file links, ATTACH_FILE handler |
 | `src/bot1/briefing/` | Daily briefing + weekly review composers |
 | `src/bot2/` | Bot 2 — Receipt Tracker (router, vision, sheets, drive) |
+| `src/bot3/` | Bot 3 — Request Agent (router, parser, GitHub, Notion) |
 | `src/shared/` | Shared infra — SQLite, scheduler, auth, config |
 | `src/utils/` | Helpers — Notion API, Anthropic API, Google API, dates, logging |
 | `docs/` | Original spec documents |
@@ -168,6 +228,7 @@ Message type?
 | cron-parser | Cron expression → next occurrence | Calculates next_run_at from cron_expr for rescheduling recurring jobs. node-cron doesn't expose this. Added Phase 4. |
 | googleapis | Google Drive + Sheets APIs | Official SDK. Single package covers Drive + Sheets + Calendar (Phase 2). Installed Phase 5 prep. OAuth verified (bryanchong32@gmail.com). |
 | @anthropic-ai/sdk | Anthropic API client | Intent classification, title generation, vision (receipts). Already used across projects. |
+| gray-matter | YAML frontmatter parser | Extracts structured metadata from .md documents. Used by Bot 3 (Request Agent). |
 
 **Phase 2 additions (not yet):**
 - `openai` — OpenAI Whisper API for voice transcription. Add when voice notes are needed.

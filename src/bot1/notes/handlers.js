@@ -242,10 +242,7 @@ async function handlePromoteToTask(ctx, intent) {
     await markNotePromoted(notePageId);
 
     const stream = noteStream || intent.stream || 'Personal';
-    await ctx.reply(
-      `Promoted to task: ${noteTitle} [Inbox · ${stream}]\n` +
-      'Set urgency or due date? (or reply "skip")'
-    );
+    await ctx.reply(`Promoted to task: ${noteTitle} [Inbox · ${stream}]`);
 
     logger.info('PROMOTE_TO_TASK completed', { notePageId, noteTitle });
   } catch (err) {

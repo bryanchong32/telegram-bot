@@ -7,11 +7,46 @@
  * - Any other message → friendly nudge to send a .md file
  */
 
+const fs = require('fs');
+const path = require('path');
 const { parseFrontmatter, splitSections } = require('./parser');
 const { commitFiles } = require('./github');
 const { createRequestEntry, createQuickEntry, getNextRequestId } = require('./notion');
 const projects = require('./projects');
 const logger = require('./logger');
+
+/* ─── Custom projects persistence ─── */
+
+const CUSTOM_PROJECTS_FILE = path.join(__dirname, '..', '..', 'data', 'custom-projects.json');
+
+function loadCustomProjects() {
+  try {
+    if (fs.existsSync(CUSTOM_PROJECTS_FILE)) {
+      return JSON.parse(fs.readFileSync(CUSTOM_PROJECTS_FILE, 'utf8'));
+    }
+  } catch (err) {
+    logger.error('Failed to load custom projects', { error: err.message });
+  }
+  return [];
+}
+
+function saveCustomProject(name) {
+  const list = loadCustomProjects();
+  if (!list.includes(name)) {
+    list.push(name);
+    fs.writeFileSync(CUSTOM_PROJECTS_FILE, JSON.stringify(list, null, 2));
+    logger.info('Custom project saved', { name });
+  }
+}
+
+/**
+ * Returns all project keys: hardcoded + custom.
+ */
+function getAllProjectKeys() {
+  const hardcoded = Object.keys(projects);
+  const custom = loadCustomProjects().filter((p) => !hardcoded.includes(p));
+  return [...hardcoded, ...custom];
+}
 
 /* ─── Message dedup ─── */
 
@@ -86,7 +121,7 @@ function registerRouter(bot) {
       '  3. Select type and priority\n' +
       '  4. Entry logged in Notion as Unscoped\n\n' +
       '/cancel — reset if you get stuck mid-flow\n\n' +
-      'Known projects: ' + Object.keys(projects).join(', ')
+      'Known projects: ' + getAllProjectKeys().join(', ')
     );
   });
 
@@ -185,7 +220,7 @@ function registerRouter(bot) {
       try {
         await ctx.editMessageText(`Logging request...`);
 
-        const requestId = await getNextRequestId(notionDatabaseId);
+        const requestId = await getNextRequestId(notionDatabaseId, pending.project);
 
         await createQuickEntry({
           title: pending.title,
@@ -204,6 +239,11 @@ function registerRouter(bot) {
           `Status: Unscoped\n\n` +
           `📋 Notion entry created`
         );
+
+        /* Persist custom project name for future use */
+        if (!projects[pending.project]) {
+          saveCustomProject(pending.project);
+        }
 
         logger.info('Quick request filed', { requestId, project: pending.project });
 
@@ -248,14 +288,14 @@ function registerRouter(bot) {
       timestamp: Date.now(),
     });
 
-    const projectKeys = Object.keys(projects);
+    const projectKeys = getAllProjectKeys();
     await ctx.reply('Which project?', {
       reply_markup: {
         inline_keyboard: [
-          projectKeys.map((key) => ({
+          ...projectKeys.map((key) => ([{
             text: key,
             callback_data: `qr:project:${key}`,
-          })),
+          }])),
           [{ text: '✏️ Other', callback_data: 'qr:project:__other__' }],
         ],
       },

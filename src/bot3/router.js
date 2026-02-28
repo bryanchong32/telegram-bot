@@ -9,7 +9,7 @@
 
 const { parseFrontmatter, splitSections } = require('./parser');
 const { commitFiles } = require('./github');
-const { createRequestEntry } = require('./notion');
+const { createRequestEntry, createQuickEntry, getNextRequestId } = require('./notion');
 const projects = require('./projects');
 const logger = require('./logger');
 
@@ -20,6 +20,22 @@ const logger = require('./logger');
    can take a few seconds). Using a Map with TTL cleanup. */
 const processedMessages = new Map();
 const DEDUP_TTL_MS = 5 * 60 * 1000; /* 5 minutes */
+
+/* ─── Quick request conversation state ─── */
+
+const pendingQuickRequests = new Map();
+const QR_TTL_MS = 5 * 60 * 1000; /* 5 minutes */
+
+/**
+ * Gets pending quick request for a chat, cleaning up expired entries.
+ */
+function getPending(chatId) {
+  const now = Date.now();
+  for (const [id, req] of pendingQuickRequests) {
+    if (now - req.timestamp > QR_TTL_MS) pendingQuickRequests.delete(id);
+  }
+  return pendingQuickRequests.get(chatId);
+}
 
 /**
  * Returns true if this message was already processed (duplicate).
@@ -46,11 +62,10 @@ function registerRouter(bot) {
     logger.info('Bot 3 /start', { chatId: ctx.chat.id });
     await ctx.reply(
       'Hey! I\'m the Request Agent.\n\n' +
-      'Send me a .md file from a scoping session and I\'ll:\n' +
-      '  1. Commit PRD, Decision Notes, and CC Instructions to GitHub\n' +
-      '  2. Create a Notion tracking entry\n' +
-      '  3. Confirm when everything is filed\n\n' +
-      'Just send the file — I handle the rest.'
+      'Two ways to use me:\n\n' +
+      '📄 Full scoping — send a .md file and I\'ll commit docs to GitHub + create Notion entry\n\n' +
+      '💬 Quick request — send any text message and I\'ll log it in Notion as Unscoped\n\n' +
+      'Just send a message — I handle the rest.'
     );
   });
 
@@ -58,13 +73,14 @@ function registerRouter(bot) {
     logger.info('Bot 3 /help', { chatId: ctx.chat.id });
     await ctx.reply(
       'Request Agent — Help\n\n' +
-      'How to use:\n' +
+      '📄 Scoped request (full .md file):\n' +
       '  1. Finish a scoping session in Claude Chat\n' +
       '  2. Download the combined .md file\n' +
       '  3. Send it here\n\n' +
-      'The file must have:\n' +
-      '  - YAML frontmatter (request_id, project, title, etc.)\n' +
-      '  - Three sections: # PRD, # DECISION NOTES, # CLAUDE CODE INSTRUCTIONS\n\n' +
+      '💬 Quick request (text message):\n' +
+      '  1. Send any text message as the request title\n' +
+      '  2. Tap buttons to select project, type, priority\n' +
+      '  3. Entry logged in Notion as Unscoped\n\n' +
       'Valid projects: ' + Object.keys(projects).join(', ')
     );
   });
@@ -87,10 +103,131 @@ function registerRouter(bot) {
     await handleDocument(ctx);
   });
 
-  /* ─── Catch-all for non-document messages ─── */
+  /* ─── Quick Request — inline button callbacks ─── */
+
+  const VALID_TYPES = ['Bug', 'Feature', 'Enhancement', 'UX/Polish', 'Refactor'];
+  const VALID_PRIORITIES = ['P1 Critical', 'P2 Important', 'P3 Backlog'];
+
+  bot.on('callback_query:data', async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!data.startsWith('qr:')) return;
+    await ctx.answerCallbackQuery();
+
+    const chatId = ctx.chat.id;
+    const pending = getPending(chatId);
+
+    if (!pending) {
+      await ctx.reply('Session expired. Send a new text message to start again.');
+      return;
+    }
+
+    const parts = data.split(':');
+    const action = parts[1];
+    const value = parts.slice(2).join(':');
+
+    if (action === 'project') {
+      pending.project = value;
+      pending.step = 'type';
+
+      await ctx.editMessageText('Type?', {
+        reply_markup: {
+          inline_keyboard: [
+            VALID_TYPES.map((t) => ({
+              text: t,
+              callback_data: `qr:type:${t}`,
+            })),
+          ],
+        },
+      });
+
+    } else if (action === 'type') {
+      pending.type = value;
+      pending.step = 'priority';
+
+      await ctx.editMessageText('Priority?', {
+        reply_markup: {
+          inline_keyboard: [
+            VALID_PRIORITIES.map((p) => ({
+              text: p,
+              callback_data: `qr:priority:${p}`,
+            })),
+          ],
+        },
+      });
+
+    } else if (action === 'priority') {
+      pending.priority = value;
+      pendingQuickRequests.delete(chatId);
+
+      const projectConfig = projects[pending.project];
+      if (!projectConfig) {
+        await ctx.editMessageText('Unknown project. Send a new message to try again.');
+        return;
+      }
+
+      try {
+        await ctx.editMessageText(`Logging request...`);
+
+        const requestId = await getNextRequestId(projectConfig.notion_database_id);
+
+        await createQuickEntry({
+          title: pending.title,
+          requestId,
+          project: pending.project,
+          type: pending.type,
+          priority: pending.priority,
+          notionDatabaseId: projectConfig.notion_database_id,
+        });
+
+        await ctx.editMessageText(
+          `✅ ${requestId} logged\n\n` +
+          `${pending.title}\n` +
+          `Project: ${pending.project}\n` +
+          `Type: ${pending.type} | Priority: ${pending.priority}\n` +
+          `Status: Unscoped\n\n` +
+          `📋 Notion entry created`
+        );
+
+        logger.info('Quick request filed', { requestId, project: pending.project });
+
+      } catch (err) {
+        logger.error('Quick request failed', { error: err.message, stack: err.stack });
+        await ctx.editMessageText(
+          `❌ Failed to log request\n\nError: ${err.message}\n\nTry again — send the text message again.`
+        );
+      }
+    }
+  });
+
+  /* ─── Quick Request — plain text message ─── */
+
+  bot.on('message:text', async (ctx) => {
+    const text = ctx.message.text.trim();
+    if (!text || text.startsWith('/')) return;
+
+    pendingQuickRequests.set(ctx.chat.id, {
+      title: text,
+      step: 'project',
+      timestamp: Date.now(),
+    });
+
+    const projectKeys = Object.keys(projects);
+    await ctx.reply('Which project?', {
+      reply_markup: {
+        inline_keyboard: [
+          projectKeys.map((key) => ({
+            text: key,
+            callback_data: `qr:project:${key}`,
+          })),
+        ],
+      },
+    });
+  });
+
+  /* ─── Catch-all for other messages (photos, stickers, etc.) ─── */
 
   bot.on('message', async (ctx) => {
-    await ctx.reply('Send me a .md file from a scoping session to file it.');
+    await ctx.reply('Send me a .md file or a text message to log a quick request.');
   });
 }
 

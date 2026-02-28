@@ -20,7 +20,6 @@ const { createTask, searchTasks, getPageTitle } = require('../todo/notion');
 const { appendFileLink } = require('./notionFiles');
 const { inferStream } = require('../streamRouter');
 const { chat } = require('../../utils/gemini');
-const { db } = require('../../shared/db');
 const logger = require('../../utils/logger');
 
 /**
@@ -128,13 +127,7 @@ async function handleAttachFile(ctx) {
   } catch (err) {
     logger.error('ATTACH_FILE failed', { error: err.message, stack: err.stack });
 
-    /* Queue to pending_sync for retry if it was a Drive/Notion issue */
-    queuePendingSync('upload_file', {
-      caption: ctx.message.caption || '',
-      fileName: extractFileInfo(ctx).fileName,
-    });
-
-    await ctx.reply('File upload failed. Queued for retry when services are restored.');
+    await ctx.reply('File upload failed. Please send the file again.');
   } finally {
     /* Clean up temp files */
     cleanupTemp(tempPath);
@@ -282,21 +275,6 @@ function cleanFileName(fileName) {
   /* Replace underscores and hyphens with spaces */
   name = name.replace(/[_-]+/g, ' ').trim();
   return name || fileName;
-}
-
-/**
- * Queues a failed file operation to pending_sync for retry.
- */
-function queuePendingSync(action, payload) {
-  try {
-    const stmt = db.prepare(
-      'INSERT INTO pending_sync (action, payload) VALUES (?, ?)'
-    );
-    stmt.run(action, JSON.stringify(payload));
-    logger.info('Queued file operation to pending_sync', { action });
-  } catch (err) {
-    logger.error('Failed to queue pending_sync', { error: err.message });
-  }
 }
 
 /**

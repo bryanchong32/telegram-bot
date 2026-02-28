@@ -57,6 +57,12 @@ async function appendExpenseRow(receipt) {
       });
       return { rowIndex: null, duplicate: true };
     }
+  } else {
+    logger.info('Duplicate check bypassed (user override)', {
+      date: receipt.date,
+      merchant: receipt.merchant,
+      amount: receipt.amount,
+    });
   }
 
   const row = [

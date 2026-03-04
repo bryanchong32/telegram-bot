@@ -1,59 +1,69 @@
 # DECISION NOTES
 
-## 1. Context & Problem Framing
+## Context & Problem Framing
 
-Original framing was "I need a better Notion tracker." Through discussion, reframed as a workflow automation problem — the tracker structure is fine, the bottleneck is the filing process between scoping and building.
+Bryan's original request was about two friction points: (1) he can't see which quick requests need scoping, and (2) scoping a previously-captured quick request creates a duplicate. During discussion, we added a third item: the REQ-ID format is project-blind, making IDs meaningless at a glance across multiple projects.
 
-## 2. Options Considered
+## Options Considered
 
-### Option A: Enhanced Notion database only (Level 1)
-- **Description:** Better-structured Notion database with templates and views. All manual.
-- **Pros:** Zero engineering effort.
-- **Cons:** Doesn't solve filing friction. Relies on discipline.
+### Viewing Unscoped Requests
 
-### Option B: Claude Chat as process enforcer (Level 2)
-- **Description:** Claude Chat follows a protocol — checks status, enforces process, produces structured outputs. Filing still manual.
-- **Pros:** Low effort.
-- **Cons:** Admin tax per request remains ~5-10 minutes.
+**Option A: `/unscoped` with project selection (chosen)**
+- Two-step: command → pick project → see list
+- Pros: Focused results, consistent with existing button patterns
+- Cons: Extra tap vs. showing everything
 
-### Option C: Telegram bot as filing agent (Level 3) — CHOSEN
-- **Description:** After scoping in Claude Chat, send a single file to Telegram bot. Bot handles all filing.
-- **Pros:** Filing drops from 5-10 min to 30 seconds. Zero manual data entry. Builds on existing bot infrastructure.
-- **Cons:** Requires engineering effort. Another bot to maintain.
+**Option B: `/unscoped` dumps all projects**
+- Pros: One command, see everything
+- Cons: Gets noisy as projects grow, no structure
 
-## 3. Decision & Rationale
+### Replace vs. Duplicate on Scoped File
 
-Chose Option C. Admin tax is the real bottleneck. Bryan's receipt bot proves the pattern works. Multi-project support from day one means the investment pays off across all projects.
+**Option A: Auto-detect and confirm (chosen)**
+- Query Notion by Request ID before creating. If match found, show confirmation with context.
+- Pros: Safe, gives Bryan control, handles both Unscoped→Scoped upgrade and Scoped→Scoped overwrite
+- Cons: Extra Notion query on every scoped file submission
 
-## 4. Key Architectural Decisions
+**Option B: Always create new, let Bryan clean up manually**
+- Pros: Zero logic change
+- Cons: Exactly the problem Bryan raised — duplicates pile up
 
-**Repo structure — module inside telegram-bot, not standalone:** The telegram-bot repo is a personal automation hub. All bots share infrastructure (server, PM2, nginx, deployment). Separate repo would duplicate all of this.
+### ID Format
 
-**Doc storage — GitHub project repos, not Drive:** When Claude Code starts a build, it's in the project repo. Docs are right there. Google Drive would require copy-pasting.
+**Option A: `ECW-001` — short code + number**
+- Pros: Shortest, clean
+- Cons: Could collide with other numbered things if Bryan introduces task IDs later
 
-**Input format — single combined markdown file:** One file = one download, one upload. Three files = six actions. Combined format also prevents incomplete submissions.
+**Option B: `ECW-REQ-001` — short code + REQ label + number (chosen)**
+- Pros: Self-documenting, unambiguous, distinguishes requests from other future numbered items
+- Cons: Slightly longer
 
-**Content fidelity — no AI expansion:** Requirements must be exact. Bot files content as-is. No second AI pass.
+**Option C: `ECOMWAVE-001` — full project key**
+- Pros: No code mapping needed
+- Cons: Too long for projects with long names
 
-## 5. What We Explicitly Chose NOT To Do
+## Decision & Rationale
 
-- Standalone repo (duplicates deployment infrastructure)
-- Google Drive storage (adds friction, no benefit)
-- AI expansion of summaries (requirements must be exact)
-- Auto-trigger Claude Code builds (no clean programmatic trigger)
-- Status sync Notion → Telegram (Bryan checks Notion directly)
-- Auto-incrementing request IDs (manual assignment for now, v2 candidate)
+- `/unscoped` with project selection — keeps it focused and consistent with existing UX patterns
+- Confirm before replacing — safety net without friction (one tap)
+- `{CODE}-REQ-{NNN}` format — Bryan preferred the explicitness of the REQ label. Slight extra length is worth the clarity.
+- Notion-only migration — GitHub folders keep old names. Not worth the commit noise for a cosmetic rename. Old commit messages reference old IDs which is fine as history.
 
-## 6. Risks Accepted
+## What We Explicitly Chose NOT To Do
 
-- Telegram downtime: can file manually in Notion as fallback
-- GitHub API rate limits: unlikely at current volume, bot should retry gracefully
-- Frontmatter format rigidity: strict validation with clear errors for quick fix-and-resend
+- **No GitHub folder renaming** — old `docs/requests/REQ-001/` folders stay. New requests use the new format in folder names going forward. This avoids meaningless churn in git history.
+- **No edit/delete commands in Telegram** — Notion is the right place for that. Rekko is for filing, not managing.
+- **No filtering `/unscoped` by priority/type** — premature. If the list gets long enough to need filtering, we'll revisit.
+- **No auto-generating project codes** — Bryan wants to choose meaningful codes. Worth the extra prompt during custom project creation.
 
-## 7. Future Considerations
+## Risks Accepted
 
-- `/status` command to query Notion from Telegram
-- `/update` command to change request status from Telegram
-- Auto-increment request IDs per project
-- Template validation (check sections have content)
-- Batch filing (multiple files in one message)
+- **Notion query on every scoped file:** Adds one API call before GitHub commit. Acceptable — latency is already dominated by the GitHub commit step, not Notion reads.
+- **Old and new format coexistence:** Parser accepts both during transition. Minimal risk since it's only Bryan filing requests.
+- **Custom projects file format change:** `custom-projects.json` changes from a string array to an object array. Existing file needs handling on first load (migrate in place or reset).
+
+## Future Considerations
+
+- If Bryan adds more projects, he may want `/projects` command to list all known projects with their codes
+- Could add `/request {ID}` to view a specific request's details from Telegram
+- Effort field redefined as context risk indicator (Small/Medium/Large) — reflects Claude Code session complexity, not Bryan's time

@@ -1,174 +1,182 @@
 # CLAUDE CODE INSTRUCTIONS
 
-## 1. Objective
+## Objective
 
-Build a new Telegram bot module ("Request Agent") within the existing `telegram-bot` repo. The bot receives a single markdown file via Telegram, parses it, commits three separate documents to the correct GitHub project repository, creates a Notion database entry with all properties populated, and confirms completion via Telegram.
+Add five capabilities to Bot 3 (Request Agent): new project-prefixed ID format, `/unscoped` command, scoped-file-replaces-existing logic, custom project code prompt, and a one-time Notion migration script.
 
-## 2. Context
+## Context
 
-- **This is a new module in an existing multi-bot repo.** The `telegram-bot` repo already contains multiple bot modules (Nami for notes/tasks, Scannko for receipt scanning, notification logic). Inspect the existing repo structure — particularly `src/`, `ecosystem.config.js`, and `ARCHITECTURE.md` — and follow the same patterns for organizing, deploying, and running the Request Agent.
-- **User flow:** Bryan finishes a scoping session in Claude Chat → downloads a single `.md` file → sends it to the Request Agent Telegram bot → bot files everything → Bryan picks up the build later in Claude Code.
-- **Reference the existing Scannko bot** as the closest architectural parallel — it also receives file input (receipt photos), processes content, and writes to external APIs (Google Drive + Sheets). The Request Agent follows the same pattern but targets GitHub API + Notion API instead.
+Bot 3 runs as a separate PM2 process (`request-agent`, port 3004). Key files:
 
-## 3. Technical Specification
+- `src/bot3/router.js` — message routing, quick request flow, document processing pipeline
+- `src/bot3/notion.js` — `createRequestEntry`, `createQuickEntry`, `getNextRequestId`
+- `src/bot3/parser.js` — YAML frontmatter parsing + validation, section splitting
+- `src/bot3/projects.js` — project config registry (repo, branch, Notion DB ID, docs path)
+- `data/custom-projects.json` — persisted custom project names (currently string array)
 
-### 3a. Input Format
+Current quick request flow: text → project buttons → type buttons → priority buttons → `createQuickEntry` → Notion page with Status: Unscoped.
 
-The bot receives a markdown file with YAML frontmatter and three document sections. See the PRD section above for the full format specification.
+Current scoped file flow: `.md` file → parse frontmatter → validate project → split sections → commit to GitHub → `createRequestEntry` → Notion page with Status: Scoped.
 
-**Frontmatter fields (all required):**
+Notion database has these relevant properties: `Request ID` (rich_text), `Status` (select: Unscoped/Scoped), `Project` (select), all URL link fields (`PRD Link`, `Decision Notes Link`, `CC Instructions Link`).
 
-| Field | Type | Valid Values |
-|---|---|---|
-| request_id | string | Format: REQ-XXX |
-| project | string | Must match a key in project config |
-| title | string | Free text |
-| type | string | Bug, Feature, Enhancement, UX/Polish, Refactor |
-| priority | string | P1 Critical, P2 Important, P3 Backlog |
-| effort | string | Small, Medium, Large |
-| source | string | Own Testing, Client Feedback, Claude Chat Session, Code Review, User Report |
-| date | string | YYYY-MM-DD |
+## Technical Specification
 
-### 3b. File Splitting Logic
+### 1. Project Code Configuration
 
-Split by detecting top-level `#` headers:
-- `# PRD` → content until `---` separator or `# DECISION NOTES`
-- `# DECISION NOTES` → content until `---` separator or `# CLAUDE CODE INSTRUCTIONS`
-- `# CLAUDE CODE INSTRUCTIONS` → content to end of file
+**`src/bot3/projects.js`** — add `code` field to each project:
 
-Strip `---` separators between sections. Each output file starts with its header.
-
-### 3c. Project Configuration
-
-Create a config file for project mappings. Match whatever config format the existing repo uses.
-
-```yaml
-projects:
-  ecomwave-crm:
-    github_repo: bryanchong32/mom-crm-webapp
-    github_branch: main
-    notion_database_id: "<placeholder>"
-    docs_path: "docs/requests"
-  telegram-bot:
-    github_repo: bryanchong32/telegram-bot
-    github_branch: main
-    notion_database_id: "<placeholder>"
-    docs_path: "docs/requests"
+```
+ecomwave-crm → code: 'ECW'
+telegram-bot → code: 'TGB'
 ```
 
-Leave `notion_database_id` values as placeholders.
+**`data/custom-projects.json`** — change format from string array to object array:
 
-### 3d. GitHub Integration
-
-Use GitHub REST API (or Octokit if already a dependency) to commit files.
-
-**Per request, create three files in one commit:**
-- `{docs_path}/{request_id}/PRD.md`
-- `{docs_path}/{request_id}/DECISION-NOTES.md`
-- `{docs_path}/{request_id}/CC-INSTRUCTIONS.md`
-
-**Commit message:** `docs: add {request_id} - {title}`
-
-**Auth:** `GITHUB_TOKEN` env var with `repo` scope. Must have access to all repos in config.
-
-**Important:** The bot commits to OTHER repos (e.g., `mom-crm-webapp`), not just its own.
-
-### 3e. Notion Integration
-
-Use Notion API to create a database page.
-
-| Notion Property | Type | Value |
-|---|---|---|
-| Request Title | title | `title` |
-| Request ID | rich_text | `request_id` |
-| Type | select | `type` |
-| Priority | select | `priority` |
-| Effort | select | `effort` |
-| Status | select | Always "Scoped" |
-| Source | select | `source` |
-| Date Logged | date | `date` as ISO 8601 |
-| PRD Link | url | GitHub URL to PRD.md |
-| Decision Notes Link | url | GitHub URL to DECISION-NOTES.md |
-| CC Instructions Link | url | GitHub URL to CC-INSTRUCTIONS.md |
-
-**GitHub URL format:** `https://github.com/{github_repo}/blob/{github_branch}/{docs_path}/{request_id}/PRD.md`
-
-Allow Notion API to create select options on the fly.
-
-### 3f. Telegram Bot
-
-Needs its own bot token: `REQUEST_AGENT_BOT_TOKEN` (or follow existing naming convention).
-
-- Accept only `.md` files
-- Pipeline: validate → parse → split → GitHub → Notion → confirm
-- Confirmation format: ✅ with request ID, title, project, priority, effort, status
-- Error format: ❌ with failed step, error detail, partial success report
-
-### 3g. Environment Variables
-
-Add to existing `.env` and `.env.example`:
-```
-REQUEST_AGENT_BOT_TOKEN=<telegram bot token>
-GITHUB_TOKEN=<personal access token with repo scope>
-NOTION_TOKEN=<notion integration token>
+```json
+[
+  { "name": "some-project", "code": "SMP" }
+]
 ```
 
-Reuse existing vars if they overlap.
+On load, detect old format (string array) and migrate to new format automatically. If old format is found and no code exists, those legacy custom projects should still work but won't have a code until Bryan re-adds them. Log a warning.
 
-### 3h. Processing Pipeline
+**`router.js`** — update `loadCustomProjects`, `saveCustomProject`, `getAllProjectKeys` to handle new format. Add `getProjectCode(projectKey)` helper that checks hardcoded projects first, then custom projects, returns the code string.
 
-1. Receive file from Telegram
-2. Validate `.md` extension
-3. Parse frontmatter, validate all required fields
-4. Validate `project` exists in config
-5. Split into three documents
-6. Validate all three sections have content
-7. Commit to GitHub (target project repo)
-8. Construct GitHub URLs
-9. Create Notion entry with properties + URLs
-10. Send Telegram confirmation
+### 2. New Request ID Format
 
-On failure: stop, report failed step, report any successful steps.
+**Format:** `{CODE}-REQ-{NNN}` where `NNN` is zero-padded to 3 digits.
 
-### 3i. Deployment
+**`src/bot3/notion.js` → `getNextRequestId`:**
+- Accept a `projectCode` parameter (e.g., `'ECW'`)
+- Query Notion filtering by Project, look at Request ID values
+- Match against pattern `{CODE}-REQ-(\d+)` to find highest number
+- Return next sequential ID: `{CODE}-REQ-{next}`
+- Must also handle legacy `REQ-\d+` entries during transition — ignore them when counting for the new format
 
-Add as new process in `ecosystem.config.js` following existing pattern. Should run alongside other bots without disrupting them.
+**`src/bot3/parser.js`:**
+- Update `request_id` validation regex to accept both `REQ-\d+` (legacy) and `[A-Z]{2,4}-REQ-\d+` (new format)
+- All other validation unchanged
 
-## 4. Constraints
+**`src/bot3/router.js`:**
+- Quick request flow: after priority is selected, call `getNextRequestId` with the project code
+- Scoped file flow: no change to ID generation (ID comes from frontmatter)
 
-- **Follow existing repo patterns.** Inspect structure, style, dependencies, and deployment BEFORE writing code.
-- Secrets in env vars only
-- Meaningful error messages returned via Telegram
-- Minimal new dependencies — prefer what's already in the repo
+### 3. `/unscoped` Command
 
-## 5. Acceptance Criteria
+**`src/bot3/router.js`** — register `/unscoped` command:
 
-- AC-1: Valid `.md` file → three files appear in correct GitHub repo under `docs/requests/{request_id}/`
-- AC-2: Valid `.md` file → Notion entry created with all properties correct
-- AC-3: Notion entry GitHub URLs link to actual committed files
-- AC-4: Missing frontmatter field → specific validation error naming the missing field(s)
-- AC-5: Invalid project name → error listing valid project names
-- AC-6: Non-`.md` file → friendly rejection message
-- AC-7: GitHub success + Notion failure → partial success report
-- AC-8: Response within 10 seconds
-- AC-9: Handles files up to 50KB
-- AC-10: Runs in ecosystem.config.js alongside existing bots without disruption
+Step 1: Show inline buttons for each known project (hardcoded + custom). Callback data: `unscoped:project:{key}`.
 
-## 6. Out of Scope
+Step 2: On project selection, query Notion database for pages where `Status = Unscoped` AND `Project = {selected project}`. Sort by Date Logged descending.
 
-- Do NOT build `/status` or `/update` commands
-- Do NOT build auto-incrementing request IDs
-- Do NOT add AI/LLM processing
-- Do NOT integrate with Google Drive
-- Do NOT build web dashboard
-- Do NOT add batch file processing
-- Do NOT modify existing bot modules (Nami, Scannko, notifications)
+Step 3: Format and reply. Each item on its own line: `{Request ID} — {title} ({priority}, {date})`. If no results: "No unscoped requests for {project}."
 
-## 7. Deliverables
+**`src/bot3/notion.js`** — add `getUnscopedRequests(notionDatabaseId, project)`:
+- Query Notion with filter: Status equals "Unscoped" AND Project equals `{project}`
+- Sort by Date Logged descending
+- Return array of `{ requestId, title, priority, date }`
+- Handle pagination (loop through all pages)
 
-- New Request Agent module following existing structural patterns
-- Updated `ecosystem.config.js` with new bot process
-- Updated `.env.example` with new environment variables
-- Project config file with placeholder entries
-- Example `.md` input file for testing
-- Updated `ARCHITECTURE.md` to document the new module
+### 4. Scoped File Replaces Existing Entry
+
+**`src/bot3/notion.js`** — add `findRequestById(notionDatabaseId, requestId)`:
+- Query Notion with filter: Request ID rich_text equals `{requestId}`
+- Return `{ pageId, status, title }` if found, `null` if not
+- This is used by the router to check for duplicates before filing
+
+**`src/bot3/notion.js`** — add `updateRequestEntry({ pageId, meta, githubUrls })`:
+- Calls `notion.pages.update` on the existing page
+- Updates: Status → Scoped, all frontmatter fields (type, priority, effort, source, date), all three GitHub URL fields
+- Does NOT update: Request Title (keep the original or update? — update it from the scoped file since the title may have been refined during scoping), Project (should match), Request ID (same)
+- Actually: update Request Title too, since scoping may refine the title
+
+**`src/bot3/router.js` → `handleDocument`:**
+
+After parsing frontmatter and validating project (existing Steps 1–4), insert a new step:
+
+- Call `findRequestById` with the request_id from frontmatter
+- If found with status "Unscoped": store the pending replacement in a Map (keyed by chat ID), send confirmation message: `"{request_id} exists as Unscoped — replace with scoped version?\n\nExisting: {existing title}\nNew: {new title}"` with Yes/No inline buttons. Callback data: `replace:yes` / `replace:no`. Return (don't proceed with filing yet).
+- If found with status "Scoped": same pattern but different message: `"{request_id} is already Scoped. Overwrite?\n\nExisting: {existing title}\nNew: {new title}"` with Yes/No buttons. Return.
+- If not found: proceed with current create flow (no change).
+
+Add callback handler for `replace:yes` and `replace:no`:
+- `replace:yes`: retrieve pending data from Map, proceed with GitHub commit, then call `updateRequestEntry` instead of `createRequestEntry`. Send success message. Clear pending state.
+- `replace:no`: reply "Cancelled." Clear pending state.
+- Pending replace state expires after 5 minutes (same TTL pattern as quick requests).
+
+### 5. Custom Project Code Prompt
+
+**`src/bot3/router.js`** — modify the custom project flow:
+
+Current flow: "Other" → "Type the project name:" → text input → type buttons → priority buttons → file.
+
+New flow: "Other" → "Type the project name:" → text input → **"Short code for this project? (2–4 uppercase letters, e.g., SMP)"** → text input → validate (uppercase only, 2–4 chars, not already used by another project) → type buttons → priority buttons → file.
+
+Add a new step value `custom_code` in the pending quick request state machine. After receiving the project name (current `custom_project` step), transition to `custom_code` instead of `type`.
+
+Validation on code input:
+- Must match `/^[A-Z]{2,4}$/`
+- Must not match any existing project code (check both hardcoded and custom)
+- On validation failure: reply with error and re-prompt
+
+`saveCustomProject` updated to accept and store both name and code.
+
+### 6. Migration Script
+
+Create `scripts/migrate-request-ids.js`:
+
+- Standalone Node.js script (not part of the bot runtime)
+- Reads project config from `src/bot3/projects.js` to get project → code mapping
+- Queries ALL pages in the Notion database
+- For each page: read `Project` select value and `Request ID` rich_text
+- If Request ID matches old format `REQ-\d+`: look up the project's code, construct new ID `{CODE}-REQ-{NNN}` keeping the same number, update the page's Request ID field
+- If project has no code (unknown custom project): skip and log warning
+- Dry-run mode by default (print changes without applying). Pass `--apply` flag to execute.
+- Log every change: `REQ-001 → ECW-REQ-001 (page: {pageId})`
+
+Run: `node scripts/migrate-request-ids.js` (dry run) then `node scripts/migrate-request-ids.js --apply`
+
+## Constraints
+
+- Notion API rate limits: use the existing `withRetry` pattern for all new Notion calls
+- Do not add new npm dependencies — everything needed is already installed
+- Bot 3 shares the same Notion token as Bot 1/2 (env: `NOTION_TOKEN`)
+- The migration script must be safe to run multiple times (idempotent — skip entries already in new format)
+- Maintain backward compatibility: parser must accept both old and new ID formats until all entries are migrated
+
+## Acceptance Criteria
+
+**AC-1:** Send `/unscoped` to Rekko → see project selection buttons → tap a project → see list of Unscoped requests for that project with ID, title, priority, and date. If none, see "No unscoped requests" message.
+
+**AC-2:** Send a quick text request → go through project/type/priority flow → Notion entry created with new format ID (e.g., `ECW-REQ-004`). Counter is per-project and sequential.
+
+**AC-3:** Send a scoped `.md` file with `request_id: ECW-REQ-004` where ECW-REQ-004 exists as Unscoped → Rekko shows confirmation with both titles → tap Yes → existing Notion entry updated to Status: Scoped with GitHub links populated. No duplicate entry created.
+
+**AC-4:** Send a scoped `.md` file with a request_id that does NOT exist in Notion → normal create flow (current behavior, no confirmation needed).
+
+**AC-5:** Send a scoped `.md` file with a request_id that exists as Scoped → Rekko shows overwrite warning → tap Yes → entry updated. Tap No → cancelled.
+
+**AC-6:** During custom project creation ("Other"), after typing the project name, Rekko prompts for a 2–4 letter code. Invalid input (lowercase, too long, duplicate code) is rejected with re-prompt. Valid code is stored with the project.
+
+**AC-7:** Run migration script in dry-run mode → see list of proposed changes (`REQ-001 → ECW-REQ-001`). Run with `--apply` → Notion entries updated. Run again → no changes (idempotent).
+
+**AC-8:** Parser accepts both `REQ-001` (legacy) and `ECW-REQ-001` (new) in frontmatter `request_id` field without validation errors.
+
+## Out of Scope
+
+- Renaming GitHub folders from old `REQ-XXX` format — Notion only
+- Edit/delete requests via Telegram
+- Changes to Bot 1 or Bot 2
+- Any UI in Notion (views, filters) — Bryan manages Notion layout manually
+- Bulk operations on requests
+- Auto-generating project codes from project names
+
+## Deliverables
+
+- Updated `src/bot3/router.js` — `/unscoped` command, replace logic, custom code prompt
+- Updated `src/bot3/notion.js` — `getUnscopedRequests`, `findRequestById`, `updateRequestEntry`, updated `getNextRequestId`
+- Updated `src/bot3/parser.js` — relaxed request_id regex
+- Updated `src/bot3/projects.js` — `code` field on each project
+- New `scripts/migrate-request-ids.js` — one-time migration script
+- Updated `data/custom-projects.json` format handling (backward compatible load)

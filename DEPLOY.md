@@ -1,235 +1,98 @@
 # Deployment Guide — Telegram Bots
 
-Step-by-step instructions for deploying all three bots to the Hetzner VPS (5.223.49.206).
+Deployment is managed by Coolify (self-hosted PaaS) on the Hetzner VPS (5.223.49.206). Pushing to `main` on GitHub triggers automatic builds and deployments.
 
 ---
 
-## Prerequisites
+## Architecture
 
-- SSH access to VPS as root (then switch to deploy user)
-- Node.js 20+ installed on VPS
-- PM2 installed under `deploy` user
-- Nginx + certbot already configured (from ECOMWAVE CRM)
-- LibreOffice for Office→PDF conversion: `apt-get install libreoffice`
+| Service | Dockerfile | Port | Coolify App |
+|---------|-----------|------|-------------|
+| Bot 1+2 (Personal Assistant + Receipt Tracker) | `Dockerfile` | 3003 | telegram-bots |
+| Bot 3 (Request Agent) | `Dockerfile.request-agent` | 3004 | request-agent |
 
----
-
-## Step 1: Upload Code to VPS
-
-From your local machine (in the telegram-bot directory):
-
-```bash
-# Create the project directory on VPS
-ssh root@5.223.49.206 "mkdir -p /home/deploy/telegram-bots/logs && chown -R deploy:deploy /home/deploy/telegram-bots"
-
-# Upload code (exclude node_modules, data, .env)
-scp -r src/ scripts/ nginx/ package.json package-lock.json ecosystem.config.js .env.example root@5.223.49.206:/home/deploy/telegram-bots/
-
-# Fix ownership
-ssh root@5.223.49.206 "chown -R deploy:deploy /home/deploy/telegram-bots"
-```
+Both containers are built from the same repo (`bryanchong32/telegram-bot`), `main` branch.
 
 ---
 
-## Step 2: Create .env on VPS
+## How Deployments Work
 
-```bash
-ssh root@5.223.49.206
-su - deploy
-cd /home/deploy/telegram-bots
-cp .env.example .env
-nano .env  # Fill in all values
-```
+1. Push code to `main` branch on GitHub
+2. Coolify detects the push via GitHub App webhook
+3. Coolify builds Docker images using the respective Dockerfiles
+4. Coolify replaces old containers with new ones
+5. Nginx continues proxying webhook traffic to the container ports
 
-Required environment variables (all must be set for production):
-- `TELEGRAM_BOT1_TOKEN` — from @BotFather
-- `TELEGRAM_BOT2_TOKEN` — from @BotFather
-- `ALLOWED_TELEGRAM_USER_ID` — Bryan's Telegram user ID
-- `NOTION_TOKEN` — from notion.so/my-integrations
-- `NOTION_TASKS_DB_ID` — Master Tasks database ID
-- `NOTION_QUICKNOTES_DB_ID` — Quick Notes database ID
-- `ANTHROPIC_API_KEY` — Claude API key
-- `GOOGLE_CLIENT_ID` — from GCP console
-- `GOOGLE_CLIENT_SECRET` — from GCP console
-- `GOOGLE_REFRESH_TOKEN` — from OAuth Playground
-- `GDRIVE_TASK_REFS_FOLDER_ID` — TaskRefs root folder
-- `GDRIVE_RECEIPTS_FOLDER_ID` — Receipts root folder
-- `GSHEETS_EXPENSE_LOG_ID` — Expense Log spreadsheet
-- `REQUEST_AGENT_BOT_TOKEN` — from @BotFather (Bot 3)
-- `GITHUB_TOKEN` — GitHub personal access token (repo scope, for Bot 3)
-- `NODE_ENV=production`
-- `PORT=3003`
-- `TZ=Asia/Kuala_Lumpur`
+No SSH or manual commands needed for routine deployments.
 
 ---
 
-## Step 3: Install Dependencies
+## Environment Variables
 
-```bash
-su - deploy
-cd /home/deploy/telegram-bots
-npm ci --production
-```
+Managed in the **Coolify dashboard** (not `.env` files on disk).
+
+Required variables for Bot 1+2:
+- `TELEGRAM_BOT1_TOKEN`, `TELEGRAM_BOT2_TOKEN`
+- `ALLOWED_TELEGRAM_USER_ID`
+- `NOTION_TOKEN`, `NOTION_TASKS_DB_ID`, `NOTION_QUICKNOTES_DB_ID`
+- `GEMINI_API_KEY`, `GOOGLE_CLOUD_API_KEY`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
+- `GDRIVE_TASK_REFS_FOLDER_ID`, `GDRIVE_RECEIPTS_FOLDER_ID`, `GSHEETS_EXPENSE_LOG_ID`
+- `NODE_ENV=production`, `PORT=3003`, `TZ=Asia/Kuala_Lumpur`
+
+Required variables for Bot 3:
+- `REQUEST_AGENT_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`
+- `NOTION_TOKEN`, `GITHUB_TOKEN`
+- `GEMINI_API_KEY`
+- `NODE_ENV=production`, `PORT=3004`, `TZ=Asia/Kuala_Lumpur`
 
 ---
 
-## Step 4: Create data/ Directory
+## Persistent Data
 
-```bash
-mkdir -p /home/deploy/telegram-bots/data
-```
-
-SQLite database is created automatically on first run.
+Bot 1+2 use SQLite at `/app/data/bot.db`. A Coolify persistent volume is mounted at `/app/data` so the database survives container restarts and redeployments.
 
 ---
 
-## Step 5: Configure Nginx
+## Nginx Routing
 
-Add the webhook location blocks to the existing ecomwave Nginx config:
+Nginx proxies webhook paths from `bryan-bots.duckdns.org` to the Docker containers:
 
+| Path | Target |
+|------|--------|
+| `/webhook/bot1` | localhost:3003 |
+| `/webhook/bot2` | localhost:3003 |
+| `/webhook/request-agent` | localhost:3004 |
+| `/bot-health` | localhost:3003/health |
+| `/request-agent-health` | localhost:3004/health |
+
+SSL is managed by Let's Encrypt via Nginx.
+
+---
+
+## Telegram Webhooks
+
+Webhooks are registered to:
+- Bot 1: `https://bryan-bots.duckdns.org/webhook/bot1`
+- Bot 2: `https://bryan-bots.duckdns.org/webhook/bot2`
+- Bot 3: `https://bryan-bots.duckdns.org/webhook/request-agent`
+
+If webhooks need re-registering (e.g., after domain change):
 ```bash
-# As root:
-nano /etc/nginx/sites-available/ecomwave
-```
-
-Add these inside the `server { listen 443 ssl; ... }` block (AFTER existing CRM locations):
-
-```nginx
-# Bot 1 webhook — Personal Assistant
-location /webhook/bot1 {
-    proxy_pass http://127.0.0.1:3003/webhook/bot1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-
-# Bot 2 webhook — Receipt Tracker
-location /webhook/bot2 {
-    proxy_pass http://127.0.0.1:3003/webhook/bot2;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-
-# Bot 3 webhook — Request Agent
-location /webhook/request-agent {
-    proxy_pass http://127.0.0.1:3004/webhook/request-agent;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-
-# Bot health check (Bot 1 + 2)
-location /bot-health {
-    proxy_pass http://127.0.0.1:3003/health;
-    proxy_set_header Host $host;
-}
-
-# Bot 3 health check
-location /request-agent-health {
-    proxy_pass http://127.0.0.1:3004/health;
-    proxy_set_header Host $host;
-}
-```
-
-Test and reload:
-```bash
-nginx -t && systemctl reload nginx
+curl "https://api.telegram.org/bot<BOT1_TOKEN>/setWebhook?url=https://bryan-bots.duckdns.org/webhook/bot1"
+curl "https://api.telegram.org/bot<BOT2_TOKEN>/setWebhook?url=https://bryan-bots.duckdns.org/webhook/bot2"
+curl "https://api.telegram.org/bot<BOT3_TOKEN>/setWebhook?url=https://bryan-bots.duckdns.org/webhook/request-agent"
 ```
 
 ---
 
-## Step 6: Start with PM2
+## Verification
 
-**CRITICAL: Always use the `deploy` user for PM2. Never run PM2 as root.**
-
-```bash
-su - deploy
-cd /home/deploy/telegram-bots
-pm2 start ecosystem.config.js
-pm2 save
-```
-
-This starts both PM2 processes defined in ecosystem.config.js: `telegram-bots` (Bot 1 + 2, port 3003) and `request-agent` (Bot 3, port 3004).
-
-Verify they're running:
-```bash
-pm2 status
-pm2 logs telegram-bots --lines 20
-pm2 logs request-agent --lines 20
-```
-
----
-
-## Step 7: Set Telegram Webhooks
-
-From the VPS (as deploy user):
-
-```bash
-cd /home/deploy/telegram-bots
-node scripts/set-webhooks.js
-```
-
-This sets Bot 1 and Bot 2 to receive updates via `https://ecomwave.duckdns.org/webhook/bot1` and `/webhook/bot2`.
-
-For Bot 3 (Request Agent), register the webhook separately:
-```bash
-curl "https://api.telegram.org/bot<REQUEST_AGENT_BOT_TOKEN>/setWebhook?url=https://ecomwave.duckdns.org/webhook/request-agent"
-```
-
----
-
-## Step 8: Verify Deployment
-
-1. **Health check (Bot 1+2)**: `curl https://ecomwave.duckdns.org/bot-health`
-2. **Health check (Bot 3)**: `curl https://ecomwave.duckdns.org/request-agent-health`
+1. **Health check (Bot 1+2)**: `curl https://bryan-bots.duckdns.org/bot-health`
+2. **Health check (Bot 3)**: `curl https://bryan-bots.duckdns.org/request-agent-health`
 3. **Bot 1**: Send `/health` to the Personal Assistant bot in Telegram
 4. **Bot 2**: Send `/health` to the Receipt Tracker bot in Telegram
 5. **Bot 3**: Send `/health` to the Request Agent bot in Telegram
-6. **Test Bot 1**: Send "show today's tasks"
-7. **Test Bot 2**: Send a receipt photo
-8. **Test Bot 3**: Send a `.md` document
-
----
-
-## Ongoing Operations
-
-### Restarting after code update
-```bash
-# Upload new code
-scp -r src/ root@5.223.49.206:/home/deploy/telegram-bots/
-ssh root@5.223.49.206 "chown -R deploy:deploy /home/deploy/telegram-bots"
-
-# Restart all bots (ALWAYS as deploy user)
-ssh root@5.223.49.206 "su - deploy -c 'cd /home/deploy/telegram-bots && pm2 restart all && pm2 save'"
-
-# Or restart individually
-ssh root@5.223.49.206 "su - deploy -c 'cd /home/deploy/telegram-bots && pm2 restart telegram-bots && pm2 save'"
-ssh root@5.223.49.206 "su - deploy -c 'cd /home/deploy/telegram-bots && pm2 restart request-agent && pm2 save'"
-```
-
-### Viewing logs
-```bash
-su - deploy
-pm2 logs telegram-bots --lines 50
-pm2 logs request-agent --lines 50
-# or
-tail -f /home/deploy/telegram-bots/logs/out.log
-```
-
-### Checking process status
-```bash
-su - deploy -c 'pm2 status'
-```
-
-### VPS restart recovery
-PM2 auto-starts saved processes on boot. The app also:
-- Restores open draft buffers from SQLite
-- Re-runs missed scheduler triggers from the last 24 hours
-- Reconnects to all external services automatically
 
 ---
 
@@ -237,11 +100,24 @@ PM2 auto-starts saved processes on boot. The app also:
 
 | Issue | Solution |
 |-------|----------|
-| Bot 1/2 not responding | `su - deploy -c 'pm2 restart telegram-bots'` |
-| Bot 3 not responding | `su - deploy -c 'pm2 restart request-agent'` |
-| 409 conflict on startup | Normal — Telegram keeps old connections for ~30s. The bot retries automatically. |
-| Webhook not receiving | Check Nginx: `nginx -t`, check logs: `pm2 logs telegram-bots` |
-| PDF conversion failing | Install LibreOffice: `apt-get install libreoffice` |
-| Notion errors | Check API token in .env, check /health |
-| GitHub commit failing | Check GITHUB_TOKEN in .env — may have expired or lack repo scope |
+| Bot not responding | Check Coolify dashboard for container status, restart if needed |
+| Build failing | Check Coolify deployment logs for Docker build errors |
+| Webhook not receiving | Check Nginx config: `nginx -t`, check container logs in Coolify |
+| PDF conversion failing | Verify LibreOffice is installed in the Docker image (see Dockerfile) |
+| Notion errors | Check API token in Coolify env vars |
+| GitHub commit failing (Bot 3) | Check GITHUB_TOKEN in Coolify env vars — may have expired |
 | Google API errors | Refresh token may have expired — re-do OAuth Playground flow |
+| Container keeps restarting | Check Coolify logs for crash loop, verify env vars are set |
+
+---
+
+## Coolify Dashboard
+
+Access at: `coolify-solworks.duckdns.org` (port 8000)
+
+From the dashboard you can:
+- View container status and logs
+- Restart services
+- Update environment variables
+- View deployment history
+- Trigger manual deployments

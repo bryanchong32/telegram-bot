@@ -1,0 +1,11 @@
+FROM node:20-slim
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY . .
+
+RUN mkdir -p /app/data
+
+EXPOSE 3004
+CMD ["node", "src/bot3/index.js"]

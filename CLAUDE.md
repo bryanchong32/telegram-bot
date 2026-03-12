@@ -65,7 +65,7 @@ Always explain like a senior consultant — not just "I did X" but "I did X beca
 | File Storage | Google Drive API via googleapis | Task reference files + receipt images |
 | Expense Log | Google Sheets API via googleapis | Receipt data rows (Bot 2) |
 | Scheduler | node-cron | Trigger check every 60s against scheduled_jobs table |
-| Process Manager | PM2 | Runs under `deploy` user (NOT root) |
+| Containerization | Docker via Coolify | Auto-deploys from GitHub on push to `main` |
 | Reverse Proxy | Nginx | Webhook endpoint, HTTPS via Let's Encrypt |
 | Hosting | Hetzner VPS (5.223.49.206) | Shared with ECOMWAVE CRM |
 
@@ -99,10 +99,12 @@ These are rules specific to this project that Superpowers doesn't know about:
 - Zero API calls during note buffering — core design principle
 - One Gemini call per note save, always
 
-**PM2 deployment:**
-- PM2 runs under `deploy` user, NOT root
-- Always deploy with `su - deploy -c 'pm2 restart telegram-bots'`
-- Running PM2 as root creates a separate daemon that conflicts
+**Docker / Coolify deployment:**
+- All bots run as Coolify-managed Docker containers (migrated from PM2 in REQ-048)
+- Bot 1+2 use `Dockerfile`, Bot 3 uses `Dockerfile.request-agent` — both in repo root
+- Deployments happen automatically when pushing to `main` branch on GitHub
+- Environment variables are managed in the Coolify dashboard
+- SQLite data persisted via Coolify volume mount at `/app/data`
 
 ---
 
@@ -121,9 +123,10 @@ These are rules specific to this project that Superpowers doesn't know about:
 **Commit format:** `[type]: [short description]`
 Types: `feat`, `fix`, `docs`, `security`, `refactor`, `deploy`
 
-**VPS paths:**
-- Production app: `/home/deploy/telegram-bots/`
-- Port: 3003 internal, Nginx proxies 443 → 3003
+**Deployment:**
+- Bot 1+2: Coolify Docker container, port 3003, Nginx proxies 443 → 3003
+- Bot 3: Coolify Docker container, port 3004, Nginx proxies 443 → 3004
+- Auto-deploys on push to `main` branch
 
 ---
 
@@ -226,7 +229,7 @@ Full schema: see SCHEMA.md
 
 *(Append only — never delete)*
 
-- VPS is shared with ECOMWAVE CRM. PM2 runs under `deploy` user — NEVER run PM2 as root. This project = `telegram-bots` on port 3003.
+- VPS is shared with ECOMWAVE CRM. All services run as Coolify-managed Docker containers. Bot 1+2 on port 3003, Bot 3 on port 3004.
 - Timezone is UTC+8 (Asia/Kuala_Lumpur) everywhere. All cron expressions, all date comparisons, all briefing triggers.
 - Notion API replaces rich_text on PATCH — always GET first, append, then PATCH. Process file attachments sequentially.
 - Stream routing: Todos default to Personal on low confidence. Notes leave stream blank on low confidence. Same router module, different fallback behavior.

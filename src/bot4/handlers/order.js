@@ -90,10 +90,8 @@ async function processOrder(ctx, rawOrder) {
   const courier = normalizeCourier(rawOrder.courier);
 
   // 7. Build product_string
-  const productString = resolvedProducts.map((p) => {
-    const prefix = promoTag ? `[${promoTag}] ` : '';
-    return `${prefix}${p.sku}`;
-  }).join(' + ');
+  const skuList = resolvedProducts.map((p) => p.sku).join(' + ');
+  const productString = promoTag ? `[${promoTag}] ${skuList}` : skuList;
 
   // 8. Build complete order object
   const order = {

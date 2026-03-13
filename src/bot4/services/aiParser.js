@@ -4,6 +4,7 @@
  */
 
 const { chat } = require('../../utils/gemini');
+const { getActivePromos } = require('./promoStore');
 const logger = require('../logger');
 
 const SYSTEM_PROMPT = `You are an order data extraction assistant. You receive Chinese order confirmation text and extract structured data as JSON.
@@ -38,8 +39,14 @@ Required JSON structure:
  */
 async function parseOrderText(text) {
   try {
+    // Build dynamic prompt with active promo names
+    const activePromos = getActivePromos();
+    const promoHint = activePromos.length > 0
+      ? `\n\nCurrently active promotions: ${activePromos.map((p) => `"${p.name}"`).join(', ')}. If the text mentions any of these (even partially, e.g. "女神節優惠" matches "女神26"), set promo_mention to the closest matching promo name from this list.`
+      : '';
+
     const response = await chat({
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: SYSTEM_PROMPT + promoHint,
       userMessage: text,
       maxTokens: 1024,
     });

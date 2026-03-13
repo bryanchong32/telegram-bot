@@ -1,62 +1,49 @@
 /**
  * Google Sheets column mapping for Order Entry Bot.
- * Matches the exact column order from CRM's sheetSyncService.js.
+ * Matches the actual sheet column order (A → X).
+ *
+ * IMPORTANT: Columns L–P have formulas — bot must NOT write to them.
+ * We split writes into two ranges: A:K and Q:X.
  */
-
-// Exact column headers in order (A → Q)
-const COLUMNS = [
-  'Region',                        // A
-  'Contact Number',                // B
-  'Order ID (FIV5S app)',          // C
-  'Customer Name',                 // D
-  'Address',                       // E
-  'Pain Point + Remark',           // F
-  'Sources (page)',                // G
-  'Order Date',                    // H
-  'Delivered Date',                // I
-  'Order Status',                  // J
-  'Selling Price (HKD)',           // K
-  'PV',                            // L — sheet formula, leave empty
-  'Commission (MYR)',              // M
-  'Courier',                       // N
-  'Tracking Number',               // O
-  'Lead Gen Source (which ad?)',   // P
-  'Product',                       // Q
-];
 
 /**
- * Build a row array from an order object, matching the sheet column order.
- *
- * Bot fills: Region, Customer Name, Contact Number, Order ID, Order Date,
- *            Product, Selling Price, Courier, Address, Pain Point + Remark,
- *            Sources (page), Lead Gen Source.
- *
- * Left empty (filled later or by sheet formula):
- *   PV, Order Status, Tracking Number, Delivered Date, Commission.
- *
+ * Build the A:K portion of the row (before formula columns).
  * @param {object} order
- * @returns {string[]} Row array matching COLUMNS order
+ * @returns {string[]}
  */
-function buildSheetRow(order) {
+function buildRowPartA(order) {
   return [
     order.region || '',                  // A: Region
-    order.contact_number || '',          // B: Contact Number
-    order.order_id || '',                // C: Order ID (FIV5S app)
-    order.customer_name || '',           // D: Customer Name
-    order.address || '',                 // E: Address
-    order.pain_point || '',              // F: Pain Point + Remark
-    order.sources || '',                 // G: Sources (page)
-    order.order_date || '',              // H: Order Date
-    '',                                  // I: Delivered Date — left empty
-    '',                                  // J: Order Status — left empty
+    '',                                  // B: First/Repeat? — left empty
+    '',                                  // C: Enquiry Date — left empty
+    order.order_date || '',              // D: Order Date
+    order.pain_point || '',              // E: Pain Point + Remark
+    order.customer_name || '',           // F: Customer Name
+    order.phone || '',                   // G: Contact Number
+    order.address || '',                 // H: Address
+    order.product_string || '',          // I: Product
+    '',                                  // J: Quantity — left empty
     order.selling_price || '',           // K: Selling Price (HKD)
-    '',                                  // L: PV — sheet formula
-    '',                                  // M: Commission (MYR) — left empty
-    order.courier || '',                 // N: Courier
-    '',                                  // O: Tracking Number — left empty
-    order.lead_gen_source || '',         // P: Lead Gen Source (which ad?)
-    order.product || '',                 // Q: Product
   ];
 }
 
-module.exports = { COLUMNS, buildSheetRow };
+/**
+ * Build the Q:X portion of the row (after formula columns).
+ * Skips L (PV), M (Commission), N (Promo Cost), O (Membership Cost), P (Cancellation Cost).
+ * @param {object} order
+ * @returns {string[]}
+ */
+function buildRowPartB(order) {
+  return [
+    order.courier || '',                 // Q: Courier
+    order.order_id || '',                // R: Order ID (FIV5S app)
+    '',                                  // S: Order Status — left empty
+    '',                                  // T: Tracking Number — left empty
+    '',                                  // U: Delivered Date — left empty
+    '',                                  // V: Delivery Fee — left empty
+    order.source_page || '',             // W: Sources (page)
+    order.ad_source || '',               // X: Lead Gen Source (which ad?)
+  ];
+}
+
+module.exports = { buildRowPartA, buildRowPartB };

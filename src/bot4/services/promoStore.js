@@ -92,11 +92,30 @@ function removePromo(name) {
 }
 
 /**
- * Check if a name matches any active promo.
+ * Check if a mention matches any active promo (fuzzy: substring match in either direction).
+ * Returns the matching promo name if found, or null.
+ *
+ * @param {string} mention — raw promo text extracted by AI
+ * @returns {string|null} — the matched promo name, or null
+ */
+function matchPromo(mention) {
+  if (!mention) return null;
+  const normalised = mention.trim();
+  // Exact match first
+  const exact = promos.find((p) => p.name === normalised);
+  if (exact) return exact.name;
+  // Substring match: promo name in mention or mention in promo name
+  const partial = promos.find(
+    (p) => normalised.includes(p.name) || p.name.includes(normalised)
+  );
+  return partial ? partial.name : null;
+}
+
+/**
+ * Check if a name matches any active promo (legacy compat).
  */
 function isValidPromo(name) {
-  const normalised = name.trim();
-  return promos.some((p) => p.name === normalised);
+  return matchPromo(name) !== null;
 }
 
 module.exports = {
@@ -106,4 +125,5 @@ module.exports = {
   addPromo,
   removePromo,
   isValidPromo,
+  matchPromo,
 };

@@ -6,7 +6,7 @@
 const crypto = require('crypto');
 const { resolveProduct } = require('../config/products');
 const { normalizePhone, getRegionFromPhone } = require('../utils/phone');
-const { isValidPromo } = require('../services/promoStore');
+const { matchPromo } = require('../services/promoStore');
 const pendingOrderStore = require('../services/pendingOrderStore');
 const { formatConfirmCard } = require('../templates/confirmCard');
 const logger = require('../logger');
@@ -81,9 +81,9 @@ async function processOrder(ctx, rawOrder) {
     return;
   }
 
-  // 5. Validate promo
-  const promoTag = rawOrder.promo_mention && isValidPromo(rawOrder.promo_mention)
-    ? rawOrder.promo_mention
+  // 5. Validate promo (fuzzy match against active promos)
+  const promoTag = rawOrder.promo_mention
+    ? matchPromo(rawOrder.promo_mention)
     : null;
 
   // 6. Normalize courier
@@ -91,7 +91,7 @@ async function processOrder(ctx, rawOrder) {
 
   // 7. Build product_string
   const productString = resolvedProducts.map((p) => {
-    const prefix = promoTag ? `[${promoTag}]` : '';
+    const prefix = promoTag ? `[${promoTag}] ` : '';
     return `${prefix}${p.sku}`;
   }).join(' + ');
 

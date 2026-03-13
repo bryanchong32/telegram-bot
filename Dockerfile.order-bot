@@ -8,5 +8,5 @@ COPY . .
 RUN mkdir -p /app/data
 VOLUME /app/data
 
-EXPOSE 3006
+EXPOSE 3005
 CMD ["node", "src/bot4/index.js"]

@@ -53,7 +53,9 @@ async function main() {
   /* Start bot — webhook (production) or long polling (development) */
   if (config.NODE_ENV === 'production') {
     app.post('/webhook/order-bot', webhookCallback(bot4, 'express'));
-    logger.info('Production mode — webhook route registered', { path: '/webhook/order-bot' });
+    const webhookUrl = 'https://bryan-bots.duckdns.org/webhook/order-bot';
+    await bot4.api.setWebhook(webhookUrl, { drop_pending_updates: false });
+    logger.info('Production mode — webhook set', { url: webhookUrl });
   } else {
     logger.info('Development mode — resetting stale sessions before polling');
     await bot4.api.deleteWebhook({ drop_pending_updates: true });

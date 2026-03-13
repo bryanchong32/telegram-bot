@@ -3,7 +3,7 @@
  * Uses Gemini to extract structured order data from Chinese order confirmation text.
  */
 
-const { chat } = require('../../utils/gemini');
+const { chat } = require('./gemini');
 const { getActivePromos } = require('./promoStore');
 const logger = require('../logger');
 

@@ -3,7 +3,7 @@
  * Uses Gemini Vision to extract order metadata from FIV5S app screenshots.
  */
 
-const { multimodal } = require('../../utils/gemini');
+const { multimodal } = require('./gemini');
 const logger = require('../logger');
 
 const SYSTEM_PROMPT = `You are an OCR extraction assistant. You receive a screenshot from the FIV5S order management app and extract order metadata as JSON.
